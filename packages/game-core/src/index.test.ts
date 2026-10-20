@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PHYSICS, stepBody, type Body, type MapGeometry, type MoveInput } from './index';
+import { bodyState, PHYSICS, stepBody, type Body, type MapGeometry, type MoveInput } from './index';
 
 const map: MapGeometry = {
   width: 400,
@@ -8,14 +8,16 @@ const map: MapGeometry = {
   platforms: [
     { x: 0, y: 200, width: 400 },
     { x: 150, y: 120, width: 100 },
+    { x: 270, y: 60, width: 60 },
   ],
+  ladders: [{ x: 300, top: 60, bottom: 200 }],
 };
-const idle: MoveInput = { left: false, right: false, jump: false };
+const idle: MoveInput = { left: false, right: false, up: false, down: false, jump: false };
 const run = (body: Body, input: MoveInput, steps: number) => {
   for (let i = 0; i < steps; i++) body = stepBody(body, input, map);
   return body;
 };
-const standing: Body = { x: 100, y: 200, vx: 0, vy: 0, grounded: true };
+const standing: Body = { x: 100, y: 200, vx: 0, vy: 0, grounded: true, climbing: false };
 
 describe('stepBody', () => {
   it('stays grounded when idle on a platform', () => {
@@ -59,7 +61,7 @@ describe('stepBody', () => {
   });
 
   it('respawns after falling out of the world', () => {
-    const b = run({ x: 100, y: 250, vx: 0, vy: 0, grounded: false }, idle, 120);
+    const b = run({ ...standing, y: 250, grounded: false }, idle, 120);
     expect(b).toMatchObject({ x: map.spawn.x, y: map.spawn.y });
   });
 
@@ -67,9 +69,64 @@ describe('stepBody', () => {
     const inputs = Array.from({ length: 300 }, (_, i) => ({
       left: i % 7 < 2,
       right: i % 5 < 3,
+      up: i % 90 < 30,
+      down: i % 70 < 10,
       jump: i % 40 === 0,
     }));
     const play = () => inputs.reduce((b, inp) => stepBody(b, inp, map), standing);
     expect(play()).toEqual(play());
+  });
+
+  describe('ladders', () => {
+    const atLadderBottom: Body = { ...standing, x: 305 };
+    const up = { ...idle, up: true };
+    const down = { ...idle, down: true };
+
+    it('grabs a ladder within reach, snapping to its centre', () => {
+      const b = stepBody(atLadderBottom, up, map);
+      expect(b).toMatchObject({ x: 300, climbing: true, grounded: false });
+      expect(b.y).toBeCloseTo(200 - PHYSICS.climbSpeed / 60, 5);
+    });
+
+    it('ignores ladders out of reach', () => {
+      expect(stepBody({ ...standing, x: 300 + PHYSICS.ladderGrab + 1 }, up, map).climbing).toBe(
+        false,
+      );
+    });
+
+    it('climbs to the top and steps onto the platform there', () => {
+      const b = run(atLadderBottom, up, 120);
+      expect(b).toMatchObject({ x: 300, y: 60, grounded: true, climbing: false });
+      expect(run(b, idle, 30)).toMatchObject({ y: 60, grounded: true });
+    });
+
+    it('climbs down from the top and lands at the bottom', () => {
+      const top: Body = { ...standing, x: 302, y: 60 };
+      expect(stepBody(top, down, map).climbing).toBe(true);
+      expect(run(run(top, down, 120), idle, 10)).toMatchObject({ y: 200, grounded: true });
+    });
+
+    it('holds position on the ladder without input and ignores gravity', () => {
+      const onLadder = run(atLadderBottom, up, 30);
+      expect(run(onLadder, idle, 60)).toEqual({ ...onLadder, vy: 0 });
+    });
+
+    it('jumps off sideways but not straight up', () => {
+      const onLadder = run(atLadderBottom, up, 30);
+      expect(stepBody(onLadder, { ...idle, jump: true }, map).climbing).toBe(true);
+      const off = stepBody(onLadder, { ...idle, jump: true, right: true }, map);
+      expect(off).toMatchObject({ climbing: false, vx: PHYSICS.walkSpeed });
+      expect(off.vy).toBeLessThan(0);
+    });
+  });
+});
+
+describe('bodyState', () => {
+  it('derives an animation state from the body', () => {
+    expect(bodyState(standing)).toBe('idle');
+    expect(bodyState({ ...standing, vx: 10 })).toBe('walk');
+    expect(bodyState({ ...standing, grounded: false, vy: -5 })).toBe('jump');
+    expect(bodyState({ ...standing, grounded: false, vy: 5 })).toBe('fall');
+    expect(bodyState({ ...standing, climbing: true })).toBe('climb');
   });
 });

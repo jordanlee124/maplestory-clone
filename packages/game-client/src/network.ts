@@ -5,6 +5,7 @@ export interface GameSession {
   gameUrl: string;
   token: string;
   characterId: string;
+  mapId: string;
 }
 
 const reconnectKey = (characterId: string) => `cindervale:reconnect:${characterId}`;
@@ -13,7 +14,7 @@ const reconnectKey = (characterId: string) => `cindervale:reconnect:${characterI
  * Joins the map room, first trying to resume a session that survived a page reload.
  * Mid-session network drops are handled by the SDK's built-in auto-reconnect.
  */
-export async function joinMap({ gameUrl, token, characterId }: GameSession): Promise<Room> {
+export async function joinMap({ gameUrl, token, characterId, mapId }: GameSession): Promise<Room> {
   const client = new Client(gameUrl);
   client.auth.token = token;
   const key = reconnectKey(characterId);
@@ -24,6 +25,7 @@ export async function joinMap({ gameUrl, token, characterId }: GameSession): Pro
     try {
       room = await client.joinOrCreate(ROOM_MAP, {
         characterId,
+        mapId,
         protocolVersion: PROTOCOL_VERSION,
       });
     } catch (e) {

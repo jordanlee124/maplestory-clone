@@ -33,3 +33,12 @@ Phaser 4 is npm `latest`, but the project spec requires Phaser 3. Pinned `phaser
 ## ADR-007: TypeScript 6.0, not 7 (2026-10-20)
 
 `typescript-eslint` supports TS `<6.1`. Upgrade when it supports TS 7.
+
+## ADR-008: One room per map, Fernreach Fields as start map (2026-10-20)
+
+Rooms are matched with `filterBy(['mapId'])`. The client sends its character's `mapId`, and the server validates it against the saved character. New characters start in Fernreach Fields (the beginner region); existing Cindervale Town characters stay in town until portals exist.
+Channels (several rooms per map) come later as another `filterBy` key.
+
+## ADR-009: Procedural placeholder art (2026-10-20)
+
+Placeholder sprites and tiles are drawn in code at load time (`game-client/src/art/`), at native resolution, behind stable texture keys and frame names (`adventurer-<class>`, `idle0…climb1`). Real sprite sheets in `/assets` replace them without touching scene code.

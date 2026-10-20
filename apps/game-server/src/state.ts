@@ -12,6 +12,7 @@ export const PlayerState = schema(
     vx: t.float64(),
     vy: t.float64(),
     grounded: t.boolean(),
+    climbing: t.boolean(),
     lastSeq: t.int32(),
   },
   'PlayerState',

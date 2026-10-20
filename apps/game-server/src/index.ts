@@ -1,4 +1,3 @@
-import { START_MAP_ID } from '@cindervale/content';
 import { createDb } from '@cindervale/database';
 import { ROOM_MAP } from '@cindervale/protocol';
 import { Server } from '@colyseus/core';
@@ -16,13 +15,10 @@ const env = z
 
 const { db } = createDb(env.DATABASE_URL);
 const server = new Server({ transport: new WebSocketTransport() });
-// shortcut: one room for the starting map; per-map rooms and channels come with map travel.
-server.define(
-  ROOM_MAP,
-  createMapRoom({ db, jwtSecret: new TextEncoder().encode(env.JWT_SECRET) }),
-  {
-    mapId: START_MAP_ID,
-  },
-);
+// One room per map (matched on the client's mapId). shortcut: no channels yet; add a
+// channel option to filterBy when a map needs more than maxClients players.
+server
+  .define(ROOM_MAP, createMapRoom({ db, jwtSecret: new TextEncoder().encode(env.JWT_SECRET) }))
+  .filterBy(['mapId']);
 await server.listen(env.GAME_PORT);
 console.log(`Game server listening on ws://localhost:${env.GAME_PORT}`);

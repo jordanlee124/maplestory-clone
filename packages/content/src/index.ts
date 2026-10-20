@@ -13,6 +13,8 @@ export interface MapDef {
   name: string;
   regionId: string;
   geometry: MapGeometry;
+  /** Placeholder palette (0xRRGGBB) until real map art exists. */
+  theme: { sky: number; hillsFar: number; hillsNear: number };
 }
 
 export interface ClassDef {
@@ -74,7 +76,7 @@ export const REGIONS: Record<string, RegionDef> = {
     id: 'fernreach-fields',
     name: 'Fernreach Fields',
     levelRange: [1, 15],
-    maps: [],
+    maps: ['fernreach-fields'],
   },
   'duskmire-caverns': {
     id: 'duskmire-caverns',
@@ -84,7 +86,7 @@ export const REGIONS: Record<string, RegionDef> = {
   },
 };
 
-export const START_MAP_ID = 'cindervale-town';
+export const START_MAP_ID = 'fernreach-fields';
 
 export const MAPS: Record<string, MapDef> = {
   'cindervale-town': {
@@ -103,7 +105,43 @@ export const MAPS: Record<string, MapDef> = {
         { x: 1560, y: 520, width: 320 },
         { x: 1960, y: 430, width: 220 },
       ],
+      ladders: [],
     },
+    theme: { sky: 0x9fd8ff, hillsFar: 0x8fbf9f, hillsNear: 0x5d9c6c },
+  },
+  'fernreach-fields': {
+    id: 'fernreach-fields',
+    name: 'Fernreach Fields',
+    regionId: 'fernreach-fields',
+    geometry: {
+      width: 3840,
+      height: 720,
+      spawn: { x: 200, y: 640 },
+      platforms: [
+        // Ground, with a jumpable gap at 1500-1600.
+        { x: 0, y: 640, width: 1500 },
+        { x: 1600, y: 640, width: 2240 },
+        // Stairs up to the first ledge.
+        { x: 300, y: 560, width: 160 },
+        { x: 520, y: 480, width: 160 },
+        { x: 760, y: 400, width: 200 },
+        // Ladder ledge.
+        { x: 1080, y: 360, width: 280 },
+        // Mid-field hops.
+        { x: 1800, y: 540, width: 200 },
+        { x: 2060, y: 460, width: 180 },
+        { x: 2300, y: 380, width: 220 },
+        // High lookout, reached by the long rope.
+        { x: 2680, y: 260, width: 320 },
+        { x: 3120, y: 520, width: 240 },
+        { x: 3420, y: 440, width: 220 },
+      ],
+      ladders: [
+        { x: 1160, top: 360, bottom: 640 },
+        { x: 2740, top: 260, bottom: 640 },
+      ],
+    },
+    theme: { sky: 0xa8e6ff, hillsFar: 0xa6d98c, hillsNear: 0x6cbf5a },
   },
 };
 

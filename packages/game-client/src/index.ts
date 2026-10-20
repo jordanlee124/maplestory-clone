@@ -4,14 +4,19 @@ import Phaser from 'phaser';
 import { joinMap, type GameSession } from './network';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
-import { WorldScene } from './scenes/WorldScene';
+import { WorldScene, type WorldHooks } from './scenes/WorldScene';
+import { VIEWPORT } from './viewport';
 
 export type { GameSession } from './network';
-
-export const VIEWPORT = { width: 1280, height: 720 } as const;
+export type { WorldHooks } from './scenes/WorldScene';
+export { VIEWPORT } from './viewport';
 
 /** Joins the player's map, then boots Phaser into `parent`. Returns a teardown function. */
-export async function startGame(parent: HTMLElement, session: GameSession): Promise<() => void> {
+export async function startGame(
+  parent: HTMLElement,
+  session: GameSession,
+  hooks: WorldHooks,
+): Promise<() => void> {
   const room = await joinMap(session);
   // The first full state lands asynchronously after the join resolves.
   if (!room.state?.players?.has(room.sessionId)) {
@@ -30,17 +35,17 @@ export async function startGame(parent: HTMLElement, session: GameSession): Prom
     scene: [BootScene, PreloadScene, WorldScene],
   });
   game.registry.set('room', room);
+  game.registry.set('hooks', hooks);
 
   // Read-only hook for e2e tests and debugging; exposes nothing the client can't already see.
   const debug = window as unknown as { cindervale?: unknown };
   debug.cindervale = {
     sessionId: room.sessionId,
+    mapId: room.state.mapId,
     players: () =>
-      [...(room.state.players as Map<string, PlayerView>).values()].map(({ name, x, y }) => ({
-        name,
-        x,
-        y,
-      })),
+      [...(room.state.players as Map<string, PlayerView>).values()].map(
+        ({ name, x, y, climbing }) => ({ name, x, y, climbing }),
+      ),
   };
 
   return () => {

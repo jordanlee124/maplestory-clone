@@ -48,9 +48,11 @@ export function createMapRoom({ db, jwtSecret, reconnectSeconds = 20 }: MapRoomD
     private mapId!: string;
     private sessions = new Map<string, Session>();
 
-    override onCreate(options: { mapId: string }) {
-      const def = MAPS[options.mapId];
-      if (!def) throw new Error(`Unknown map ${options.mapId}`);
+    // Options come from the first client's join (rooms are matched per mapId); untrusted.
+    override onCreate(options: { mapId?: unknown }) {
+      const mapId = String(options.mapId);
+      const def = Object.hasOwn(MAPS, mapId) ? MAPS[mapId] : undefined;
+      if (!def) throw new ServerError(400, 'Unknown map');
       this.mapId = def.id;
       this.map = def.geometry;
       this.state = new MapState({ mapId: def.id });
@@ -94,7 +96,7 @@ export function createMapRoom({ db, jwtSecret, reconnectSeconds = 20 }: MapRoomD
       if (activeCharacters.has(c.id)) throw new ServerError(409, 'Character is already in game');
       activeCharacters.add(c.id);
 
-      const body: Body = { x: c.x, y: c.y, vx: 0, vy: 0, grounded: false };
+      const body: Body = { x: c.x, y: c.y, vx: 0, vy: 0, grounded: false, climbing: false };
       this.sessions.set(client.sessionId, {
         characterId: c.id,
         body,

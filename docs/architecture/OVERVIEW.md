@@ -20,18 +20,18 @@
 
 ## Workspaces
 
-| Path                   | Purpose                                                                 |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `apps/web`             | Next.js site: auth UI, character select, hosts the Phaser canvas        |
-| `apps/api`             | Fastify HTTP API: `/auth/register`, `/auth/login`, `/characters`        |
-| `apps/game-server`     | Colyseus server: `map` room, movement authority, persistence on leave   |
-| `packages/game-core`   | Pure deterministic rules: `stepBody`, physics constants, map geometry   |
-| `packages/game-client` | Phaser 3 scenes (Boot, Preload, World), prediction, network client      |
-| `packages/protocol`    | Zod schemas for HTTP and room messages, `PROTOCOL_VERSION`, JWT helpers |
-| `packages/content`     | Data: regions, maps, classes, monsters, bosses                          |
-| `packages/database`    | Drizzle schema, migrations, `createDb`, PGlite test helper              |
-| `packages/ui`          | Shared React primitives (Panel, Button, Field)                          |
-| `packages/config`      | Shared tsconfig and ESLint config                                       |
+| Path                   | Purpose                                                                                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`             | Next.js site: auth UI, character select, hosts the Phaser canvas                                                                                                                                     |
+| `apps/api`             | Fastify HTTP API: `/auth/register`, `/auth/login`, `/characters`                                                                                                                                     |
+| `apps/game-server`     | Colyseus server: `map` room, movement authority, persistence on leave                                                                                                                                |
+| `packages/game-core`   | Pure deterministic rules: `stepBody`, physics constants, map geometry                                                                                                                                |
+| `packages/game-client` | Phaser 3: scenes (Boot, Preload, World), `player/` (LocalPlayer, RemotePlayers, Avatar), `world/` (map renderer), `ui/` (debug overlay, Esc menu), `art/` (placeholder sprites), prediction, network |
+| `packages/protocol`    | Zod schemas for HTTP and room messages, `PROTOCOL_VERSION`, JWT helpers                                                                                                                              |
+| `packages/content`     | Data: regions, maps, classes, monsters, bosses                                                                                                                                                       |
+| `packages/database`    | Drizzle schema, migrations, `createDb`, PGlite test helper                                                                                                                                           |
+| `packages/ui`          | Shared React primitives (Panel, Button, Field)                                                                                                                                                       |
+| `packages/config`      | Shared tsconfig and ESLint config                                                                                                                                                                    |
 
 ## Key flows
 

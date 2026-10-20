@@ -16,3 +16,18 @@ Newest last. One short entry per task: date · agent · what changed · tests ·
   - Position is saved only on leave; a server crash loses movement since join.
   - Remote players use simple smoothing, not a snapshot buffer.
   - A client that stops sending inputs (e.g. hidden tab) freezes in place, including mid-air.
+
+## 2026-10-20 · Claude Code · Phase 0.1 web client
+
+- **Built:**
+  - Ladders: shared `game-core` physics, so they're server-authoritative too.
+  - Fernreach Fields test map, now the start map. Rooms are per map.
+  - Animated adventurer placeholder sprite (idle/walk/jump/fall/climb, 4 class palettes).
+  - Esc menu (resume, toggle debug, exit) and an F3 debug overlay (FPS, position, state).
+  - Client split into LocalPlayer, RemotePlayers, Avatar, MapRenderer and UI modules.
+  - Protocol v2.
+- **Tests:** 39 Vitest (+7 ladder/state, +1 per-map rooms, +1 content) and 3 Playwright (+1: climb a ladder, exit via menu). Lint, format, typecheck and build are clean.
+- **Open:**
+  - The canvas is FIT-scaled, so sprites scale fractionally (still nearest-neighbour, no blur). Integer zoom is left for later.
+  - No portals yet, so town characters can't reach Fernreach.
+  - The debug overlay is on by default.

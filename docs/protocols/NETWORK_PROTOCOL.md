@@ -1,7 +1,7 @@
 # Network Protocol
 
 Source of truth: `packages/protocol/src/index.ts` (Zod) and `apps/game-server/src/state.ts` (Colyseus schema).
-Current **`PROTOCOL_VERSION = 1`**. Bump it on any breaking change to room messages or synced state. Old clients are then rejected at join.
+Current **`PROTOCOL_VERSION = 2`** (v2: ladders, so `up`/`down` inputs and `climbing` state; per-map rooms, so `mapId` in join). Bump it on any breaking change to room messages or synced state. Old clients are then rejected at join.
 
 ## HTTP API (`apps/api`, default `:4000`)
 
@@ -25,22 +25,24 @@ All bodies are JSON. Errors return `{ statusCode, error, message }`.
 
 `client.auth.token = jwt; client.joinOrCreate('map', JoinOptions)`
 
-`JoinOptions = { characterId: uuid, protocolVersion: 1 }`
+`JoinOptions = { characterId: uuid, mapId: string, protocolVersion: 2 }`
 
-Rejections (`ServerError` code): 400 bad options/version or wrong map · 401 bad token · 403 not your character · 409 character already online.
+Rooms are matched per `mapId` (`filterBy(['mapId'])`). `mapId` must be the character's saved map.
+
+Rejections (`ServerError` code): 400 bad options/version, unknown map, or not the character's map · 401 bad token · 403 not your character · 409 character already online.
 
 ### Client → server messages
 
 | Type    | Payload                                                 | Rules                                                                                                         |
 | ------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `input` | `{ seq: int ≥ 0, left: bool, right: bool, jump: bool }` | One per 1/60 s step. `seq` strictly increasing; duplicates/old dropped. Max 30 queued; ≤ 180 msg/s or kicked. |
+| `input` | `{ seq: int32 ≥ 0, left, right, up, down, jump: bool }` | One per 1/60 s step. `seq` strictly increasing; duplicates/old dropped. Max 30 queued; ≤ 180 msg/s or kicked. |
 
 ### Synced state (`MapState`)
 
 ```text
 MapState { mapId: string, players: Map<sessionId, PlayerState> }
 PlayerState { characterId, name, classId: string,
-              x, y, vx, vy: float64, grounded: boolean, lastSeq: int32 }
+              x, y, vx, vy: float64, grounded, climbing: boolean, lastSeq: int32 }
 ```
 
 `x, y` is the bottom-centre (feet). `lastSeq` is the last input the server applied, used for reconciliation. Patches go out every 50 ms.

@@ -30,6 +30,7 @@ export class Predictor {
       vx: server.vx,
       vy: server.vy,
       grounded: server.grounded,
+      climbing: server.climbing,
     });
   }
 

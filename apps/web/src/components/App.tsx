@@ -7,14 +7,18 @@ import { GameView } from './GameView';
 
 interface Session {
   token: string;
+  /** Set together with mapId while in game. */
   characterId?: string;
+  mapId?: string;
 }
 
 const SESSION_KEY = 'cindervale:session';
 
 function loadSession(): Session | null {
   try {
-    return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null');
+    const s = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') as Session | null;
+    // Sessions saved before mapId existed go back to character select.
+    return s && !s.mapId ? { token: s.token } : s;
   } catch {
     return null;
   }
@@ -35,16 +39,17 @@ export default function App() {
       </h1>
       {!session ? (
         <AuthPanel onAuth={(token) => setSession({ token })} />
-      ) : !session.characterId ? (
+      ) : !session.characterId || !session.mapId ? (
         <CharacterPanel
           token={session.token}
-          onPlay={(characterId) => setSession({ ...session, characterId })}
+          onPlay={(characterId, mapId) => setSession({ ...session, characterId, mapId })}
           onLogout={() => setSession(null)}
         />
       ) : (
         <GameView
           token={session.token}
           characterId={session.characterId}
+          mapId={session.mapId}
           onExit={() => setSession({ token: session.token })}
         />
       )}

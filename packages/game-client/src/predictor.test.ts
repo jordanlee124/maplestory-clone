@@ -7,9 +7,10 @@ const map: MapGeometry = {
   height: 400,
   spawn: { x: 100, y: 300 },
   platforms: [{ x: 0, y: 300, width: 1000 }],
+  ladders: [],
 };
-const start: Body = { x: 100, y: 300, vx: 0, vy: 0, grounded: true };
-const right = { left: false, right: true, jump: false };
+const start: Body = { x: 100, y: 300, vx: 0, vy: 0, grounded: true, climbing: false };
+const right = { left: false, right: true, up: false, down: false, jump: false };
 
 describe('Predictor', () => {
   it('predicts immediately and matches the server after reconciliation', () => {

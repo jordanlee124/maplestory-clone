@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 
+const { KeyCodes } = Phaser.Input.Keyboard;
+
 /** Engine-level setup before any assets load. */
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -7,13 +9,15 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // Stop the browser from scrolling the page or opening find (F3) on game keys.
     this.input.keyboard?.addCapture([
-      Phaser.Input.Keyboard.KeyCodes.SPACE,
-      Phaser.Input.Keyboard.KeyCodes.ALT,
-      Phaser.Input.Keyboard.KeyCodes.UP,
-      Phaser.Input.Keyboard.KeyCodes.DOWN,
-      Phaser.Input.Keyboard.KeyCodes.LEFT,
-      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      KeyCodes.SPACE,
+      KeyCodes.ALT,
+      KeyCodes.UP,
+      KeyCodes.DOWN,
+      KeyCodes.LEFT,
+      KeyCodes.RIGHT,
+      KeyCodes.F3,
     ]);
     this.scene.start('Preload');
   }

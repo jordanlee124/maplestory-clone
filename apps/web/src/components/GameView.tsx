@@ -7,11 +7,17 @@ import { GAME_URL } from '@/lib/api';
 interface Props {
   token: string;
   characterId: string;
+  mapId: string;
   onExit: () => void;
 }
 
-export function GameView({ token, characterId, onExit }: Props) {
+export function GameView({ token, characterId, mapId, onExit }: Props) {
   const container = useRef<HTMLDivElement>(null);
+  // A ref so the in-game menu always calls the latest onExit without restarting the game.
+  const exit = useRef(onExit);
+  useEffect(() => {
+    exit.current = onExit;
+  });
   const [status, setStatus] = useState<'connecting' | 'playing' | string>('connecting');
 
   useEffect(() => {
@@ -19,7 +25,11 @@ export function GameView({ token, characterId, onExit }: Props) {
     let teardown: (() => void) | undefined;
     import('@cindervale/game-client')
       .then(({ startGame }) =>
-        startGame(container.current!, { gameUrl: GAME_URL, token, characterId }),
+        startGame(
+          container.current!,
+          { gameUrl: GAME_URL, token, characterId, mapId },
+          { onExit: () => exit.current() },
+        ),
       )
       .then(
         (stop) => {
@@ -33,7 +43,7 @@ export function GameView({ token, characterId, onExit }: Props) {
       cancelled = true;
       teardown?.();
     };
-  }, [token, characterId]);
+  }, [token, characterId, mapId]);
 
   return (
     <div className="flex w-full flex-col items-center gap-3">
@@ -46,7 +56,9 @@ export function GameView({ token, characterId, onExit }: Props) {
       {status !== 'playing' && (
         <p className="text-amber-100">{status === 'connecting' ? 'Connecting…' : status}</p>
       )}
-      <p className="text-sm text-amber-100/80">Move: ← → or A D · Jump: Space or Alt</p>
+      <p className="text-sm text-amber-100/80">
+        Move ← → · Jump Space · Climb ↑ ↓ · Menu Esc · Debug F3
+      </p>
       <Button onClick={onExit}>Exit to character select</Button>
     </div>
   );

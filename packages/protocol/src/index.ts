@@ -3,7 +3,7 @@
 import { CLASS_IDS } from '@cindervale/content';
 import { z } from 'zod';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // ---- HTTP API ----
 
@@ -37,6 +37,8 @@ export const ROOM_MAP = 'map';
 
 export const JoinOptions = z.object({
   characterId: z.uuid(),
+  /** The character's current map; rooms are matched per map. */
+  mapId: z.string().min(1),
   protocolVersion: z.literal(PROTOCOL_VERSION),
 });
 export type JoinOptions = z.infer<typeof JoinOptions>;
@@ -52,6 +54,8 @@ export const InputMessage = z.object({
     .max(2 ** 31 - 1), // synced back as int32 lastSeq
   left: z.boolean(),
   right: z.boolean(),
+  up: z.boolean(),
+  down: z.boolean(),
   jump: z.boolean(),
 });
 export type InputMessage = z.infer<typeof InputMessage>;
@@ -66,6 +70,7 @@ export interface PlayerView {
   vx: number;
   vy: number;
   grounded: boolean;
+  climbing: boolean;
   /** Last input seq the server applied; used for client reconciliation. */
   lastSeq: number;
 }

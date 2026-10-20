@@ -1,3 +1,4 @@
+import { START_MAP_ID } from '@cindervale/content';
 import { createDb } from '@cindervale/database';
 import { startTestDatabase } from '@cindervale/database/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -76,7 +77,7 @@ describe('characters', () => {
       name: 'Bobby',
       classId: 'ember-knight',
       level: 1,
-      mapId: 'cindervale-town',
+      mapId: START_MAP_ID,
     });
 
     expect(

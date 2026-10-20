@@ -17,7 +17,8 @@ let testDb: Awaited<ReturnType<typeof startTestDatabase>>;
 let conn: ReturnType<typeof createDb>;
 let server: Server;
 
-async function seedPlayer(name: string) {
+async function seedPlayer(name: string, mapId = START_MAP_ID) {
+  const { spawn } = MAPS[mapId]!.geometry;
   const [account] = await conn.db
     .insert(accounts)
     .values({ username: name.toLowerCase(), passwordHash: 'x' })
@@ -28,7 +29,7 @@ async function seedPlayer(name: string) {
       accountId: account!.id,
       name,
       classId: 'gale-ranger',
-      mapId: START_MAP_ID,
+      mapId,
       x: spawn.x,
       y: spawn.y,
     })
@@ -36,11 +37,13 @@ async function seedPlayer(name: string) {
   return { token: await signToken(account!.id, secret), characterId: character!.id };
 }
 
-function connect(token: string, characterId: string) {
+function connect(token: string, characterId: string, mapId = START_MAP_ID) {
   const client = new Client(`ws://localhost:${PORT}`);
   client.auth.token = token;
-  return client.joinOrCreate(ROOM_MAP, { characterId, protocolVersion: PROTOCOL_VERSION });
+  return client.joinOrCreate(ROOM_MAP, { characterId, mapId, protocolVersion: PROTOCOL_VERSION });
 }
+
+const RIGHT = { left: false, right: true, up: false, down: false, jump: false };
 
 // State arrives asynchronously after join, so players may briefly be undefined.
 const players = (room: Room): PlayerView[] => [
@@ -57,7 +60,7 @@ async function waitFor(check: () => boolean, ms = 3000) {
 
 function walkRight(room: Room, steps: number, fromSeq = 0) {
   for (let i = 0; i < steps; i++) {
-    room.send(ClientMessage.Input, { seq: fromSeq + i, left: false, right: true, jump: false });
+    room.send(ClientMessage.Input, { seq: fromSeq + i, ...RIGHT });
   }
 }
 
@@ -65,9 +68,9 @@ beforeAll(async () => {
   testDb = await startTestDatabase();
   conn = createDb(testDb.url);
   server = new Server({ transport: new WebSocketTransport(), gracefullyShutdown: false });
-  server.define(ROOM_MAP, createMapRoom({ db: conn.db, jwtSecret: secret, reconnectSeconds: 2 }), {
-    mapId: START_MAP_ID,
-  });
+  server
+    .define(ROOM_MAP, createMapRoom({ db: conn.db, jwtSecret: secret, reconnectSeconds: 2 }))
+    .filterBy(['mapId']);
   await server.listen(PORT);
 });
 
@@ -86,8 +89,25 @@ describe('MapRoom', () => {
     const client = new Client(`ws://localhost:${PORT}`);
     client.auth.token = a.token;
     await expect(
-      client.joinOrCreate(ROOM_MAP, { characterId: a.characterId, protocolVersion: 0 }),
+      client.joinOrCreate(ROOM_MAP, {
+        characterId: a.characterId,
+        mapId: START_MAP_ID,
+        protocolVersion: 0,
+      }),
     ).rejects.toThrow();
+  });
+
+  it('puts each map in its own room and rejects joins to the wrong map or unknown maps', async () => {
+    const field = await seedPlayer('Fielder');
+    const towner = await seedPlayer('Towner', 'cindervale-town');
+    const roomA = await connect(field.token, field.characterId);
+    const roomB = await connect(towner.token, towner.characterId, 'cindervale-town');
+    expect(roomA.roomId).not.toBe(roomB.roomId);
+    await roomA.leave();
+    await roomB.leave();
+
+    await expect(connect(towner.token, towner.characterId, START_MAP_ID)).rejects.toThrow();
+    await expect(connect(towner.token, towner.characterId, '__proto__')).rejects.toThrow();
   });
 
   it('lets two players see each other move, server-authoritatively', async () => {
@@ -174,8 +194,7 @@ describe('MapRoom', () => {
     const start = Date.now();
     for (let sent = 0; sent < 120; await new Promise((r) => setTimeout(r, 5))) {
       const due = Math.min(120, Math.floor(((Date.now() - start) * 60) / 1000));
-      for (; sent < due; sent++)
-        room.send(ClientMessage.Input, { seq: sent, left: false, right: true, jump: false });
+      for (; sent < due; sent++) room.send(ClientMessage.Input, { seq: sent, ...RIGHT });
     }
     // Timers fire late on some platforms (~38Hz on Windows); the server must not fall behind.
     await waitFor(() => players(room)[0]?.lastSeq === 119, 250);

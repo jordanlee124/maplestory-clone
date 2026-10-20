@@ -3,27 +3,56 @@ import { CreateCharacter, Credentials, InputMessage, JoinOptions, PROTOCOL_VERSI
 
 describe('protocol', () => {
   it('validates input messages', () => {
-    expect(InputMessage.safeParse({ seq: 1, left: true, right: false, jump: false }).success).toBe(
-      true,
-    );
     expect(
-      InputMessage.safeParse({ seq: 2 ** 31, left: true, right: false, jump: false }).success,
+      InputMessage.safeParse({
+        seq: 1,
+        left: true,
+        right: false,
+        up: false,
+        down: false,
+        jump: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      InputMessage.safeParse({
+        seq: 2 ** 31,
+        left: true,
+        right: false,
+        up: false,
+        down: false,
+        jump: false,
+      }).success,
     ).toBe(false);
-    expect(InputMessage.safeParse({ seq: -1, left: true, right: false, jump: false }).success).toBe(
-      false,
-    );
-    expect(InputMessage.safeParse({ seq: 1, left: 'yes', right: false, jump: false }).success).toBe(
-      false,
-    );
+    expect(
+      InputMessage.safeParse({
+        seq: -1,
+        left: true,
+        right: false,
+        up: false,
+        down: false,
+        jump: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      InputMessage.safeParse({
+        seq: 1,
+        left: 'yes',
+        right: false,
+        up: false,
+        down: false,
+        jump: false,
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects mismatched protocol versions', () => {
     const characterId = '7f0c8f2e-3a8e-4c39-9a5b-0e8c6a1f2b3d';
-    expect(JoinOptions.safeParse({ characterId, protocolVersion: PROTOCOL_VERSION }).success).toBe(
-      true,
-    );
     expect(
-      JoinOptions.safeParse({ characterId, protocolVersion: PROTOCOL_VERSION + 1 }).success,
+      JoinOptions.safeParse({ characterId, mapId: 'm', protocolVersion: PROTOCOL_VERSION }).success,
+    ).toBe(true);
+    expect(
+      JoinOptions.safeParse({ characterId, mapId: 'm', protocolVersion: PROTOCOL_VERSION + 1 })
+        .success,
     ).toBe(false);
   });
 

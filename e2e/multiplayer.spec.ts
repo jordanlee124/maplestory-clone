@@ -1,37 +1,8 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { enterWorld, players, xOf } from './helpers';
 
 // Phase 0 success condition: two authenticated players share a map, see each other
 // move, and a player reconnects (page reload) without losing their character.
-
-interface Snapshot {
-  name: string;
-  x: number;
-  y: number;
-}
-
-const players = (page: Page) =>
-  page.evaluate(
-    () =>
-      (window as unknown as { cindervale?: { players(): Snapshot[] } }).cindervale?.players() ?? [],
-  );
-
-const xOf = async (page: Page, name: string) =>
-  (await players(page)).find((p) => p.name === name)?.x;
-
-async function enterWorld(page: Page, name: string) {
-  const username = `${name.toLowerCase()}_${Date.now() % 1_000_000}`;
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Need an account?' }).click();
-  await page.getByLabel('Username').fill(username);
-  await page.getByLabel('Password').fill('password123');
-  await page.getByRole('button', { name: 'Register' }).click();
-  await page.getByLabel('New character name').fill(name);
-  await page.getByRole('button', { name: 'Create' }).click();
-  await page.getByRole('button', { name: 'Play' }).click();
-  await expect(page.getByTestId('game')).toHaveAttribute('data-status', 'playing', {
-    timeout: 20_000,
-  }); // CI loads Phaser slowly
-}
 
 test('two players see each other move and survive a reload', async ({ browser }) => {
   const suffix = String(Date.now() % 100_000);

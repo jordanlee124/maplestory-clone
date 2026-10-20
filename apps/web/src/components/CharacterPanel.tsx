@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 
 interface Props {
   token: string;
-  onPlay: (characterId: string) => void;
+  onPlay: (characterId: string, mapId: string) => void;
   onLogout: () => void;
 }
 
@@ -53,7 +53,7 @@ export function CharacterPanel({ token, onPlay, onLogout }: Props) {
               <span>
                 <strong>{c.name}</strong> · Lv {c.level} {CLASSES[c.classId].name}
               </span>
-              <Button onClick={() => onPlay(c.id)}>Play</Button>
+              <Button onClick={() => onPlay(c.id, c.mapId)}>Play</Button>
             </li>
           ))}
           {characters.length === 0 && <li className="text-sm">No characters yet.</li>}

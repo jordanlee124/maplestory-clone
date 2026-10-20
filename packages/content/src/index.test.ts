@@ -19,4 +19,16 @@ describe('content', () => {
       ).toBe(true);
     }
   });
+
+  it('every ladder ends on platforms so climbers can step off', () => {
+    for (const { geometry: g } of Object.values(MAPS)) {
+      const onPlatform = (x: number, y: number) =>
+        g.platforms.some((p) => p.y === y && x >= p.x && x <= p.x + p.width);
+      for (const l of g.ladders) {
+        expect(l.top).toBeLessThan(l.bottom);
+        expect(onPlatform(l.x, l.top)).toBe(true);
+        expect(onPlatform(l.x, l.bottom)).toBe(true);
+      }
+    }
+  });
 });

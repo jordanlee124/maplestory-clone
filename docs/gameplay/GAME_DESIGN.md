@@ -13,11 +13,11 @@ Data definitions live in `packages/content`. Status: ✅ implemented · 📄 def
 
 ## World
 
-| Region           | Role                | Levels | Status                               |
-| ---------------- | ------------------- | ------ | ------------------------------------ |
-| Cindervale Town  | Main hub            | —      | ✅ placeholder map `cindervale-town` |
-| Fernreach Fields | Beginner area       | 1–15   | 📄                                   |
-| Duskmire Caverns | Early advanced area | 15–30  | 📄                                   |
+| Region           | Role                | Levels | Status                                     |
+| ---------------- | ------------------- | ------ | ------------------------------------------ |
+| Cindervale Town  | Main hub            | —      | ✅ placeholder map `cindervale-town`       |
+| Fernreach Fields | Beginner area       | 1–15   | ✅ test map `fernreach-fields` (start map) |
+| Duskmire Caverns | Early advanced area | 15–30  | 📄                                         |
 
 ## Classes 📄
 
@@ -39,8 +39,8 @@ Twig Creature (Lv 2), Fern Frog (Lv 5), Crystal Beetle (Lv 18).
 
 | System                                                                                                                   | Status                             |
 | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| Walk, jump, one-way platforms                                                                                            | ✅ server-authoritative, predicted |
-| Double jump, ladders, ropes, portals                                                                                     | ⏳                                 |
+| Walk, jump, one-way platforms, ladders                                                                                   | ✅ server-authoritative, predicted |
+| Double jump, ropes, portals                                                                                              | ⏳                                 |
 | Combat (server-owned hits, damage, HP, cooldowns, buffs, death, loot, EXP)                                               | ⏳                                 |
 | Auto-grinding (targets, rotations, potion thresholds, loot, zones; server-validated; off in bosses; no offline grinding) | ⏳                                 |
 | Boss instances (phases, telegraphs, timers, death limits, difficulty, lockouts)                                          | ⏳                                 |
@@ -51,4 +51,8 @@ Twig Creature (Lv 2), Fern Frog (Lv 5), Crystal Beetle (Lv 18).
 
 ## Movement constants (`game-core` `PHYSICS`)
 
-Walk 180 px/s · jump 560 px/s · gravity 1500 px/s² · max fall 900 px/s · body 24×48 px · 60 Hz fixed step.
+Walk 180 px/s · jump 560 px/s · gravity 1500 px/s² · max fall 900 px/s · climb 120 px/s · body 24×48 px · 60 Hz fixed step.
+
+**Ladders:** ↑ grabs a ladder within 10 px (also mid-air), ↓ at a ladder top climbs down. Leaving either end steps onto the platform there. Jump + direction leaps off at 60% jump height; jump alone does nothing.
+
+**Controls:** ← → move · Space jump · ↑ ↓ climb · Esc menu · F3 debug overlay (WASD/Alt also work).
