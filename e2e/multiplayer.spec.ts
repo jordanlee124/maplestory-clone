@@ -87,3 +87,20 @@ test('two players see each other move and survive a reload', async ({ browser })
     .poll(async () => (await players(pageB)).filter((p) => p.name === nameA))
     .toHaveLength(1);
 });
+
+// Phaser caps frame delta while the window is unfocused; movement must still run in real time.
+test('moves at real-time speed while unfocused and below 60 fps', async ({ page }) => {
+  const name = `Foc${Date.now() % 100_000}`;
+  await enterWorld(page, name);
+  await page.locator('canvas').click();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+
+  const x0 = (await xOf(page, name))!;
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(1000);
+  await page.keyboard.up('ArrowRight');
+  // Held >= 1s at 180 px/s; the bug moved ~55 px.
+  await expect.poll(() => xOf(page, name), { timeout: 5000 }).toBeGreaterThan(x0 + 150);
+});

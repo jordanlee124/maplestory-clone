@@ -22,6 +22,7 @@ export class WorldScene extends Phaser.Scene {
   private others = new Map<string, Avatar>();
   private keys!: Keys;
   private accumulator = 0;
+  private lastTime?: number;
   private status!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -73,8 +74,12 @@ export class WorldScene extends Phaser.Scene {
     this.room.onLeave(() => this.showStatus('Disconnected. Refresh to rejoin.'));
   }
 
-  override update(_time: number, delta: number) {
-    this.accumulator += Math.min(delta, 250) / 1000;
+  override update(time: number, delta: number) {
+    // Raw frame time, not Phaser's `delta`: Phaser caps delta at 16.7ms while the window is
+    // unfocused, which would run the simulation in slow motion below 60 fps.
+    const elapsed = this.lastTime === undefined ? 0 : time - this.lastTime;
+    this.lastTime = time;
+    this.accumulator += Math.min(elapsed, 250) / 1000;
     while (this.accumulator >= FIXED_DT) {
       this.room.send(ClientMessage.Input, this.predictor.step(this.readInput()));
       this.accumulator -= FIXED_DT;
