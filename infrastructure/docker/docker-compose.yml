@@ -1,0 +1,21 @@
+# Local PostgreSQL. Usage (from repo root):
+#   docker compose -f infrastructure/docker/docker-compose.yml up -d
+# No Docker? `pnpm db:pglite` serves an embedded Postgres on the same port instead.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: cindervale
+      POSTGRES_PASSWORD: cindervale
+      POSTGRES_DB: cindervale
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cindervale']
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

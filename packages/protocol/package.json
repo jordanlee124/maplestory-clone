@@ -1,0 +1,19 @@
+{
+  "name": "@cindervale/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./token": "./src/token.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cindervale/content": "workspace:*",
+    "zod": "^4.3.6",
+    "jose": "^6.2.12"
+  }
+}

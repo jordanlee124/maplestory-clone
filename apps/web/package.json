@@ -1,0 +1,27 @@
+{
+  "name": "@cindervale/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@cindervale/content": "workspace:*",
+    "@cindervale/game-client": "workspace:*",
+    "@cindervale/protocol": "workspace:*",
+    "@cindervale/ui": "workspace:*",
+    "next": "^16.2.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.3.3"
+  }
+}

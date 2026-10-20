@@ -1,0 +1,20 @@
+{
+  "name": "@cindervale/game-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cindervale/content": "workspace:*",
+    "@cindervale/game-core": "workspace:*",
+    "@cindervale/protocol": "workspace:*",
+    "@colyseus/sdk": "^0.18.5",
+    "phaser": "~3.90.0"
+  }
+}
