@@ -7,8 +7,10 @@ import { enterWorld, players, xOf } from './helpers';
 test('two players see each other move and survive a reload', async ({ browser }) => {
   const suffix = String(Date.now() % 100_000);
   const [nameA, nameB] = [`Ann${suffix}`, `Ben${suffix}`];
-  const pageA = await (await browser.newContext()).newPage();
-  const pageB = await (await browser.newContext()).newPage();
+  const [ctxA, ctxB] = [await browser.newContext(), await browser.newContext()];
+  // Close them afterwards: two Phaser games left rendering starve later tests on slow CI.
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
 
   await enterWorld(pageA, nameA);
   await enterWorld(pageB, nameB);
@@ -61,6 +63,7 @@ test('two players see each other move and survive a reload', async ({ browser })
   await expect
     .poll(async () => (await players(pageB)).filter((p) => p.name === nameA))
     .toHaveLength(1);
+  await Promise.all([ctxA.close(), ctxB.close()]);
 });
 
 // Phaser caps frame delta while the window is unfocused; movement must still run in real time.
