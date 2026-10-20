@@ -42,12 +42,33 @@ test('two players see each other move and survive a reload', async ({ browser })
   await expect.poll(async () => (await players(pageB)).map((p) => p.name)).toContain(nameA);
   const startX = (await xOf(pageB, nameA))!;
 
-  // A walks right; B sees it.
+  // Frame rate varies a lot across machines (CI renders WebGL in software); record it.
+  for (const [label, page] of [
+    ['A', pageA],
+    ['B', pageB],
+  ] as const) {
+    const fps = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          let frames = 0;
+          const start = performance.now();
+          const tick = () => {
+            frames++;
+            if (performance.now() - start < 1000) requestAnimationFrame(tick);
+            else resolve(frames);
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    test.info().annotations.push({ type: `fps ${label}`, description: String(fps) });
+    console.log(`fps ${label}: ${fps}`);
+  }
+
+  // A walks right until B sees it; asserts replication, not speed.
   await pageA.locator('canvas').click();
   await pageA.keyboard.down('ArrowRight');
-  await pageA.waitForTimeout(1000);
+  await expect.poll(() => xOf(pageB, nameA), { timeout: 15_000 }).toBeGreaterThan(startX + 100);
   await pageA.keyboard.up('ArrowRight');
-  await expect.poll(() => xOf(pageB, nameA)).toBeGreaterThan(startX + 100);
   // Let the server finish applying in-flight inputs before recording the position.
   let movedX = -1;
   await expect
