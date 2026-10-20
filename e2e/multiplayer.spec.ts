@@ -28,7 +28,9 @@ async function enterWorld(page: Page, name: string) {
   await page.getByLabel('New character name').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
   await page.getByRole('button', { name: 'Play' }).click();
-  await expect(page.getByTestId('game')).toHaveAttribute('data-status', 'playing');
+  await expect(page.getByTestId('game')).toHaveAttribute('data-status', 'playing', {
+    timeout: 20_000,
+  }); // CI loads Phaser slowly
 }
 
 test('two players see each other move and survive a reload', async ({ browser }) => {
@@ -81,7 +83,9 @@ test('two players see each other move and survive a reload', async ({ browser })
 
   // A reloads: same character, same position, still visible to B.
   await pageA.reload();
-  await expect(pageA.getByTestId('game')).toHaveAttribute('data-status', 'playing');
+  await expect(pageA.getByTestId('game')).toHaveAttribute('data-status', 'playing', {
+    timeout: 20_000,
+  }); // CI loads Phaser slowly
   await expect.poll(() => xOf(pageA, nameA)).toBeCloseTo(movedX, 0);
   await expect
     .poll(async () => (await players(pageB)).filter((p) => p.name === nameA))
