@@ -148,3 +148,7 @@ export function stepBody(body: Body, input: MoveInput, map: MapGeometry): Body {
   }
   return stepAir(body, input, map);
 }
+
+export * from './combat';
+export type * from './rules';
+export * from './monster-ai';

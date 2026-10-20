@@ -42,3 +42,12 @@ Channels (several rooms per map) come later as another `filterBy` key.
 ## ADR-009: Procedural placeholder art (2026-10-20)
 
 Placeholder sprites and tiles are drawn in code at load time (`game-client/src/art/`), at native resolution, behind stable texture keys and frame names (`adventurer-<class>`, `idle0…climb1`). Real sprite sheets in `/assets` replace them without touching scene code.
+
+## ADR-010: Idempotent rewards via a ledger table (2026-10-20)
+
+Each EXP/loot grant inserts a unique key into `granted_rewards` (`exp:<monsterLifeId>:<characterId>`, `drop:<dropId>`) **in the same transaction** as the reward, with `ON CONFLICT DO NOTHING`. A replayed, raced, or duplicated grant is a no-op, even across processes. The character row is locked (`FOR UPDATE`) so concurrent grants to one character apply in sequence. A pickup also claims the drop in memory before awaiting the database, so two pickups in flight can't both pass validation. Loot is all-or-nothing: if it doesn't fit, the transaction rolls back (including the ledger key) and the drop is restored.
+`// shortcut:` the ledger grows without bound; prune keys older than a day once volume matters.
+
+## ADR-011: Combat rules split pure / server (2026-10-20)
+
+Formulas, leveling, hitboxes, drop rolls and the monster AI state machine are pure functions in `game-core`, with injected `now` and `rng`, so they're unit-tested deterministically. Validation and resolution that mutate session state are in `game-server/src/combat.ts`, with no IO. `map-room.ts` only wires messages, ticks and persistence. Balance numbers live only in `content`.

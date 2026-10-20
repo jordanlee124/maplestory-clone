@@ -3,7 +3,7 @@
 import { CLASS_IDS } from '@cindervale/content';
 import { z } from 'zod';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---- HTTP API ----
 
@@ -43,7 +43,12 @@ export const JoinOptions = z.object({
 });
 export type JoinOptions = z.infer<typeof JoinOptions>;
 
-export const ClientMessage = { Input: 'input' } as const;
+export const ClientMessage = {
+  Input: 'input',
+  Attack: 'attack',
+  Pickup: 'pickup',
+  Respawn: 'respawn',
+} as const;
 
 /** One fixed simulation step of input. `seq` increases by 1 per step. */
 export const InputMessage = z.object({
@@ -73,4 +78,145 @@ export interface PlayerView {
   climbing: boolean;
   /** Last input seq the server applied; used for client reconciliation. */
   lastSeq: number;
+  level: number;
+  hp: number;
+  maxHp: number;
+  mp: number;
+  maxMp: number;
+  dead: boolean;
+}
+
+// ---- Combat, progression, loot (v3) ----
+
+const int32 = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(2 ** 31 - 1);
+
+/** Ask to use a skill. The server decides hits and damage from its own state. */
+export const AttackRequest = z.object({
+  /** Client-chosen id echoed back in the result/rejection. */
+  requestId: int32,
+  skillId: z.string().min(1).max(64),
+  facing: z.enum(['left', 'right']),
+});
+export type AttackRequest = z.infer<typeof AttackRequest>;
+
+export const PickupRequest = z.object({ dropId: z.string().min(1).max(64) });
+export type PickupRequest = z.infer<typeof PickupRequest>;
+
+/** Respawn after death; no payload. */
+export const RespawnRequest = z.object({}).strict();
+
+export const ServerMessage = {
+  AttackResult: 'attackResult',
+  AttackRejected: 'attackRejected',
+  PlayerHit: 'playerHit',
+  PlayerDied: 'playerDied',
+  PlayerRespawned: 'playerRespawned',
+  MonsterKilled: 'monsterKilled',
+  LootSpawned: 'lootSpawned',
+  ItemPickedUp: 'itemPickedUp',
+  PickupRejected: 'pickupRejected',
+  ExpGained: 'expGained',
+  LevelUp: 'levelUp',
+  Inventory: 'inventory',
+} as const;
+
+export type AttackRejectReason =
+  | 'unknown_skill'
+  | 'skill_not_owned'
+  | 'invalid_state'
+  | 'too_fast'
+  | 'cooldown'
+  | 'insufficient_mp';
+
+export type PickupRejectReason =
+  'not_found' | 'invalid_state' | 'out_of_range' | 'not_owner' | 'inventory_full' | 'error';
+
+/** Broadcast. Damage numbers for everyone to render. */
+export interface AttackResult {
+  sessionId: string;
+  requestId: number;
+  skillId: string;
+  facing: 'left' | 'right';
+  hits: { monsterId: string; damage: number; crit: boolean; killed: boolean }[];
+}
+/** To the attacker only. */
+export interface AttackRejected {
+  requestId: number;
+  reason: AttackRejectReason;
+}
+/** Broadcast. */
+export interface PlayerHit {
+  sessionId: string;
+  monsterId: string;
+  damage: number;
+  hp: number;
+}
+export interface PlayerDied {
+  sessionId: string;
+}
+export interface PlayerRespawned {
+  sessionId: string;
+}
+export interface MonsterKilled {
+  monsterId: string;
+  /** May be '' if the killer left. */
+  killerSessionId: string;
+}
+export interface LootSpawned {
+  drops: DropView[];
+}
+export interface ItemPickedUp {
+  sessionId: string;
+  dropId: string;
+  itemId: string | null;
+  quantity: number;
+}
+/** To the requester only. */
+export interface PickupRejected {
+  dropId: string;
+  reason: PickupRejectReason;
+}
+/** To the earner only. */
+export interface ExpGained {
+  amount: number;
+  level: number;
+  exp: number;
+  expToNext: number;
+}
+/** Broadcast. */
+export interface LevelUp {
+  sessionId: string;
+  level: number;
+}
+/** To the owner only: sent on join and after every change. */
+export interface Inventory {
+  currency: number;
+  capacity: number;
+  items: { slot: number; itemId: string; quantity: number }[];
+}
+
+/** Synced monster state (MapState.monsters, keyed by monster id). */
+export interface MonsterView {
+  monsterId: string;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  mode: string;
+  facing: number;
+}
+
+/** Synced drop state (MapState.drops, keyed by drop id). itemId '' means currency. */
+export interface DropView {
+  dropId: string;
+  itemId: string;
+  quantity: number;
+  x: number;
+  y: number;
+  /** Character id that may pick it up now; '' once anyone may. */
+  ownerId: string;
 }

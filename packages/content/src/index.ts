@@ -1,5 +1,7 @@
-// Data-driven game content. Pure data: only Phase 0 maps are used at runtime so far.
-import type { MapGeometry } from '@cindervale/game-core';
+// Data-driven game content: world, classes, monsters. Balance numbers live in ./balance.
+import type { MapGeometry, MonsterBehavior } from '@cindervale/game-core';
+
+export * from './balance';
 
 export interface RegionDef {
   id: string;
@@ -15,6 +17,8 @@ export interface MapDef {
   geometry: MapGeometry;
   /** Placeholder palette (0xRRGGBB) until real map art exists. */
   theme: { sky: number; hillsFar: number; hillsNear: number };
+  /** Each spawn's y must be a platform top; the monster stays on that platform. */
+  monsterSpawns: readonly { monsterId: string; x: number; y: number }[];
 }
 
 export interface ClassDef {
@@ -30,6 +34,12 @@ export interface MonsterDef {
   level: number;
   hp: number;
   exp: number;
+  attack: number;
+  defense: number;
+  /** Hurt box, feet-aligned. */
+  size: { width: number; height: number };
+  behavior: MonsterBehavior;
+  dropTableId: string;
   regionId: string;
 }
 
@@ -82,7 +92,7 @@ export const REGIONS: Record<string, RegionDef> = {
     id: 'duskmire-caverns',
     name: 'Duskmire Caverns',
     levelRange: [15, 30],
-    maps: [],
+    maps: ['duskmire-caverns'],
   },
 };
 
@@ -108,6 +118,7 @@ export const MAPS: Record<string, MapDef> = {
       ladders: [],
     },
     theme: { sky: 0x9fd8ff, hillsFar: 0x8fbf9f, hillsNear: 0x5d9c6c },
+    monsterSpawns: [],
   },
   'fernreach-fields': {
     id: 'fernreach-fields',
@@ -142,6 +153,41 @@ export const MAPS: Record<string, MapDef> = {
       ],
     },
     theme: { sky: 0xa8e6ff, hillsFar: 0xa6d98c, hillsNear: 0x6cbf5a },
+    monsterSpawns: [
+      { monsterId: 'twig-creature', x: 520, y: 640 },
+      { monsterId: 'twig-creature', x: 860, y: 640 },
+      { monsterId: 'twig-creature', x: 1320, y: 640 },
+      { monsterId: 'twig-creature', x: 600, y: 480 },
+      { monsterId: 'fern-frog', x: 1900, y: 640 },
+      { monsterId: 'fern-frog', x: 2350, y: 640 },
+      { monsterId: 'fern-frog', x: 2950, y: 640 },
+      { monsterId: 'fern-frog', x: 2400, y: 380 },
+      { monsterId: 'fern-frog', x: 3220, y: 520 },
+    ],
+  },
+  'duskmire-caverns': {
+    id: 'duskmire-caverns',
+    name: 'Duskmire Caverns',
+    regionId: 'duskmire-caverns',
+    geometry: {
+      width: 2560,
+      height: 720,
+      spawn: { x: 160, y: 640 },
+      platforms: [
+        { x: 0, y: 640, width: 2560 },
+        { x: 520, y: 520, width: 300 },
+        { x: 1000, y: 440, width: 360 },
+        { x: 1600, y: 520, width: 320 },
+      ],
+      ladders: [{ x: 1080, top: 440, bottom: 640 }],
+    },
+    theme: { sky: 0x2a2440, hillsFar: 0x463a66, hillsNear: 0x5b4a80 },
+    monsterSpawns: [
+      { monsterId: 'crystal-beetle', x: 700, y: 640 },
+      { monsterId: 'crystal-beetle', x: 1200, y: 440 },
+      { monsterId: 'crystal-beetle', x: 1750, y: 520 },
+      { monsterId: 'crystal-beetle', x: 2200, y: 640 },
+    ],
   },
 };
 
@@ -152,6 +198,20 @@ export const MONSTERS: Record<string, MonsterDef> = {
     level: 2,
     hp: 40,
     exp: 4,
+    attack: 8,
+    defense: 2,
+    size: { width: 28, height: 32 },
+    behavior: {
+      speed: 40,
+      aggroRange: 0,
+      attackRange: 24,
+      attackCooldownMs: 1200,
+      patrolRange: 120,
+      leashRange: 400,
+      respawnMs: 8000,
+      idleMs: [2000, 5000],
+    },
+    dropTableId: 'twig-creature',
     regionId: 'fernreach-fields',
   },
   'fern-frog': {
@@ -160,6 +220,20 @@ export const MONSTERS: Record<string, MonsterDef> = {
     level: 5,
     hp: 90,
     exp: 9,
+    attack: 14,
+    defense: 5,
+    size: { width: 32, height: 28 },
+    behavior: {
+      speed: 60,
+      aggroRange: 0,
+      attackRange: 28,
+      attackCooldownMs: 1100,
+      patrolRange: 160,
+      leashRange: 450,
+      respawnMs: 9000,
+      idleMs: [1500, 4000],
+    },
+    dropTableId: 'fern-frog',
     regionId: 'fernreach-fields',
   },
   'crystal-beetle': {
@@ -168,6 +242,20 @@ export const MONSTERS: Record<string, MonsterDef> = {
     level: 18,
     hp: 900,
     exp: 55,
+    attack: 60,
+    defense: 40,
+    size: { width: 40, height: 30 },
+    behavior: {
+      speed: 50,
+      aggroRange: 220,
+      attackRange: 30,
+      attackCooldownMs: 1300,
+      patrolRange: 140,
+      leashRange: 500,
+      respawnMs: 12000,
+      idleMs: [2000, 4500],
+    },
+    dropTableId: 'crystal-beetle',
     regionId: 'duskmire-caverns',
   },
 };

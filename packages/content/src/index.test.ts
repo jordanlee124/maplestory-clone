@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { CLASS_IDS, CLASSES, MAPS, REGIONS, START_MAP_ID } from './index';
+import {
+  BASIC_ATTACK_ID,
+  CLASS_IDS,
+  CLASS_STATS,
+  CLASSES,
+  DROP_TABLES,
+  ITEMS,
+  MAPS,
+  MONSTERS,
+  REGIONS,
+  SKILLS,
+  START_MAP_ID,
+} from './index';
 
 describe('content', () => {
   it('keys match ids', () => {
@@ -30,5 +42,33 @@ describe('content', () => {
         expect(onPlatform(l.x, l.bottom)).toBe(true);
       }
     }
+  });
+
+  it('monster spawns sit on platforms and reference real monsters', () => {
+    for (const { geometry: g, monsterSpawns } of Object.values(MAPS)) {
+      for (const s of monsterSpawns) {
+        expect(MONSTERS[s.monsterId]).toBeDefined();
+        expect(g.platforms.some((p) => p.y === s.y && s.x >= p.x && s.x <= p.x + p.width)).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it('drop tables, skills and class stats reference real ids', () => {
+    for (const m of Object.values(MONSTERS)) {
+      const table = DROP_TABLES[m.dropTableId];
+      expect(table).toBeDefined();
+      for (const d of table!.items) {
+        expect(ITEMS[d.itemId]).toBeDefined();
+        expect(d.chance).toBeGreaterThan(0);
+        expect(d.min).toBeLessThanOrEqual(d.max);
+      }
+    }
+    for (const skill of Object.values(SKILLS)) {
+      expect(skill.classId === null || skill.classId in CLASSES).toBe(true);
+    }
+    for (const id of CLASS_IDS) expect(CLASS_STATS[id]).toBeDefined();
+    expect(SKILLS[BASIC_ATTACK_ID]?.classId).toBeNull();
   });
 });

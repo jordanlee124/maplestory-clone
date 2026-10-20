@@ -31,3 +31,32 @@ Newest last. One short entry per task: date · agent · what changed · tests ·
   - The canvas is FIT-scaled, so sprites scale fractionally (still nearest-neighbour, no blur). Integer zoom is left for later.
   - No portals yet, so town characters can't reach Fernreach.
   - The debug overlay is on by default.
+
+## 2026-10-20 · Claude Code · Phase 1B combat server
+
+- **Built:**
+  - Server-authoritative attacks and skills (validation, cooldowns, MP, hitboxes, crits, defense, knockback).
+  - Monster AI (idle, patrol, detect, chase, attack, return, death, respawn) for the Twig Creature, Fern Frog and Crystal Beetle.
+  - Player HP/MP, regen, death and respawn.
+  - EXP split by damage, leveling with stat growth, persisted progression.
+  - Drop tables, owned loot, validated pickups, a 24-slot inventory, and currency.
+  - An idempotency ledger for every reward. Protocol v3.
+  - New Duskmire Caverns test map.
+- **Tests:** 97 Vitest (+58), covering:
+  - The formula, progression, AI and drop rolls.
+  - Malicious commands: unknown/prototype skill ids, other classes' skills, spam, cooldowns, MP, dead/climbing, out of range, foreign or far loot, malformed payloads.
+  - Racing duplicate grants.
+  - Two-player kills with an EXP split, level-up, owned loot with a double pickup, and a monster killing a player followed by respawn.
+
+  The 3 Playwright tests still pass.
+
+- **Security review fixes:**
+  - HP/MP are now persisted on leave, so a rejoin can't heal you, and leaving while dead keeps you dead.
+  - A monster heading home ignores re-aggro, which stops kiting from a safe spot.
+  - Only one pickup transaction can be in flight per player.
+- **Not done (Codex / client):** no rendering of monsters, drops, damage or HUD yet; see "Client integration (v3)" in `NETWORK_PROTOCOL.md`. Until then, combat works only through the protocol (proven by the integration tests).
+- **Open:**
+  - No lag compensation for melee.
+  - Consumables can't be used yet.
+  - Position and HP/MP are saved only on leave (a crash loses them since join).
+  - The reward ledger is never pruned.

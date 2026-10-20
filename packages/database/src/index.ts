@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 export * from './schema';
-export { and, eq, sql } from 'drizzle-orm';
+export { and, asc, eq, sql } from 'drizzle-orm';
 
 export function createDb(connectionString: string) {
   const pool = new Pool({ connectionString, max: 10 });

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { CreateCharacter, Credentials, InputMessage, JoinOptions, PROTOCOL_VERSION } from './index';
+import {
+  AttackRequest,
+  CreateCharacter,
+  Credentials,
+  InputMessage,
+  JoinOptions,
+  PickupRequest,
+  PROTOCOL_VERSION,
+  RespawnRequest,
+} from './index';
 
 describe('protocol', () => {
   it('validates input messages', () => {
@@ -63,5 +72,29 @@ describe('protocol', () => {
     );
     expect(CreateCharacter.safeParse({ name: 'Ash', classId: 'runewaver' }).success).toBe(true);
     expect(CreateCharacter.safeParse({ name: 'Ash', classId: 'pirate' }).success).toBe(false);
+  });
+
+  it('validates combat and loot requests', () => {
+    expect(
+      AttackRequest.safeParse({ requestId: 1, skillId: 'basic-attack', facing: 'left' }).success,
+    ).toBe(true);
+    for (const bad of [
+      { requestId: 1, skillId: 'basic-attack', facing: 'up' },
+      { requestId: -1, skillId: 'basic-attack', facing: 'left' },
+      { requestId: 1, skillId: '', facing: 'left' },
+      { requestId: 1, skillId: 'x'.repeat(65), facing: 'left' },
+      { requestId: 1, skillId: 'basic-attack', facing: 'left', damage: 9999 },
+    ]) {
+      // Unknown keys (like a client-claimed damage) are stripped, never trusted.
+      const r = AttackRequest.safeParse(bad);
+      if (r.success) expect(r.data).not.toHaveProperty('damage');
+      else expect(r.success).toBe(false);
+    }
+    expect(
+      AttackRequest.safeParse({ requestId: 1, skillId: 'basic-attack', facing: 'up' }).success,
+    ).toBe(false);
+    expect(PickupRequest.safeParse({ dropId: 'd1' }).success).toBe(true);
+    expect(PickupRequest.safeParse({ dropId: 42 }).success).toBe(false);
+    expect(RespawnRequest.safeParse({ hp: 999 }).success).toBe(false);
   });
 });
