@@ -1,7 +1,14 @@
 import Phaser from 'phaser';
 import { createPixelGame } from '../pixelGame';
 import { cameraZoom, type VisualAsset } from '../visuals/model';
-import { ACTIONS, VALIDATION_ASSETS, VALIDATION_SLOTS } from '../visuals/validationAssets';
+import { VALIDATION_ASSETS, VALIDATION_SLOTS } from '../visuals/validationAssets';
+import {
+  CHARACTER_ACTIONS,
+  characterClip,
+  DEFAULT_APPEARANCE,
+  resolveAppearance,
+  type CharacterAppearance,
+} from '../player/appearance';
 import { REVIEW_ASSETS, REVIEW_FROG_SCALE, REVIEW_PLAYER_SCALE } from '../visuals/reviewAssets';
 import { VALIDATION_CANDIDATES, REVIEW_TWIG_SCALE } from '../visuals/validationCandidates';
 
@@ -17,7 +24,6 @@ import {
   playVisualEffect,
   queueVisuals,
   registerVisuals,
-  type ActorLayer,
 } from '../visuals/renderer';
 
 /** Isolated art calibration. No room, command transmission, damage or rewards. */
@@ -30,12 +36,19 @@ export class ArtValidationScene extends Phaser.Scene {
   private action: string = 'idle';
   private flip = false;
   private guides!: Phaser.GameObjects.Graphics;
+  private anchorGuides!: Phaser.GameObjects.Graphics;
   private uiCamera!: Phaser.Cameras.Scene2D.Camera;
   private guideObjects: Phaser.GameObjects.GameObject[] = [];
   private rootX = 500;
   private rootY = 520;
   private status!: Phaser.GameObjects.Text;
   private pausedPreview = false;
+  private appearance: CharacterAppearance = { ...DEFAULT_APPEARANCE };
+  private playerScale = REVIEW_PLAYER_SCALE;
+  private playbackSpeed = 1;
+  private background = 'forest';
+  private missingAppearance: string[] = [];
+  private backgroundObjects: Phaser.GameObjects.Image[] = [];
   private asset(key: string) {
     return this.loaded.find((a) => a.key === key);
   }
@@ -60,6 +73,7 @@ export class ArtValidationScene extends Phaser.Scene {
       const a = this.asset(key);
       if (a) {
         const image = addParallax(this, a, x, y, factor, depth);
+        if (key !== 'fern-platform') this.backgroundObjects.push(image);
         if (key === 'fern-far') image.setDisplaySize(1536, 864).setAlpha(0.86);
         if (key === 'fern-front') image.setDisplaySize(2048, 1152);
         if (key === 'fern-platform') image.setScale(800 / 2021);
@@ -67,19 +81,9 @@ export class ArtValidationScene extends Phaser.Scene {
     }
     const body = this.asset('adventurer-body');
     if (body) {
-      const layers: ActorLayer[] = [{ asset: body, depth: 0 }];
-      for (const [key, depth, attachTo, independent] of [
-        ['adventurer-hair-back', -2, 'head', undefined],
-        ['adventurer-outfit', 1, undefined, undefined],
-        ['adventurer-face', 2, 'head', 'blink'],
-        ['adventurer-hair-front', 3, 'head', undefined],
-        ['adventurer-weapon', 4, 'hand', undefined],
-        ['adventurer-accessory', 5, 'head', 'sway'],
-      ] as const) {
-        const a = this.asset(key);
-        if (a) layers.push({ asset: a, depth, attachTo, independent });
-      }
-      this.actor = new LayeredActor(this, body, layers);
+      const resolved = resolveAppearance(this.appearance, body);
+      this.actor = new LayeredActor(this, resolved.layers[0]!.asset, resolved.layers);
+      this.missingAppearance = resolved.missing;
     }
     const frog = this.asset('fern-frog');
     if (frog) this.frog = new LayeredActor(this, frog, [{ asset: frog, depth: 0 }]);
@@ -90,6 +94,8 @@ export class ArtValidationScene extends Phaser.Scene {
 
     // These are measurement guides, never fallback game artwork.
     this.guides = this.add.graphics().setDepth(80);
+    this.anchorGuides = this.add.graphics().setDepth(81);
+    this.guideObjects.push(this.anchorGuides);
     this.guides.lineStyle(1, 0x627d95, 0.8).strokeRect(240, 520, 800, 72);
     this.guides
       .lineStyle(1, 0x96d9ce)
@@ -114,8 +120,8 @@ export class ArtValidationScene extends Phaser.Scene {
     this.guideObjects.push(
       label(
         390,
-        370,
-        'ADVENTURER SLOT\n64 / 80 / 96 px visual-height trials\n24×48 collision guide',
+        320,
+        'ADVENTURER STUDY\n24×48 collision · provisional anchors\n64 / 80 / 96 px height trials',
       ),
     );
     this.guideObjects.push(label(705, 420, 'FERN FROG SLOT\n32×28 collision guide'));
@@ -166,7 +172,7 @@ export class ArtValidationScene extends Phaser.Scene {
     this.cameras.main.ignore([title, this.status, inventory, ...hud]);
     inventory.setVisible(this.loaded.length !== SCENE_ASSETS.length);
     title
-      .setText('FERNREACH · ART VALIDATION · TWIG / HUD CANDIDATES')
+      .setText('FERNREACH · CHARACTER / SCALE VALIDATION')
       .setFontSize(17)
       .setBackgroundColor('#123039dd')
       .setPadding(8);
@@ -184,7 +190,11 @@ export class ArtValidationScene extends Phaser.Scene {
   }
   private refreshStatus() {
     this.status.setText(
-      `6 direction-approved assets · Twig/HUD awaiting review · zoom ${this.cameras.main.zoom} · ${this.action}\nDraft animation coverage. Preview values only; no room or gameplay commands.`,
+      `8 direction-approved assets · zoom ${this.cameras.main.zoom} · ${this.action}` +
+        (this.asset('adventurer-body')?.clips[this.action]
+          ? ''
+          : ' · DEVELOPMENT PLACEHOLDER: idle hold') +
+        `\nFlattened adventurer study. Separate layers and complete motion drawings pending.`,
     );
   }
   setZoom(value: number) {
@@ -192,14 +202,16 @@ export class ArtValidationScene extends Phaser.Scene {
     this.refreshStatus();
   }
   setAction(action: string) {
-    if (!(ACTIONS as readonly string[]).includes(action))
+    if (!(CHARACTER_ACTIONS as readonly string[]).includes(action))
       throw new Error('Unknown validation action');
-    if (this.actor && !this.asset('adventurer-body')?.clips[action])
-      throw new Error('This study has no authored pose for that action');
     this.action = action;
     // Selecting a pose while paused holds its contact/cast frame for repeatable review.
-    this.actor?.play(action, this.pausedPreview ? (action === 'attack' ? 120 : 180) : 0);
-    this.actor?.update(this.rootX, this.rootY, this.flip, REVIEW_PLAYER_SCALE);
+    if (this.actor)
+      this.actor.play(
+        characterClip(this.actor.body, action),
+        this.pausedPreview ? (action === 'attack' ? 120 : 180) : 0,
+      );
+    this.actor?.update(this.rootX, this.rootY, this.flip, this.playerScale);
     if (action === 'attack' || action === 'skill') {
       const effect = this.asset(action === 'attack' ? 'attack-effect' : 'skill-effect');
       if (effect) {
@@ -220,7 +232,38 @@ export class ArtValidationScene extends Phaser.Scene {
   }
   setFacing(left: boolean) {
     this.flip = left;
+    this.appearance = { ...this.appearance, facing: left ? 'left' : 'right' };
     this.update();
+  }
+  setAppearance(patch: Partial<CharacterAppearance>) {
+    const appearance = { ...this.appearance, ...patch };
+    const body = this.asset('adventurer-body');
+    if (!body || !this.actor) return;
+    const resolved = resolveAppearance(appearance, body);
+    this.actor.setLayers(resolved.layers);
+    this.appearance = { ...appearance, accessories: [...appearance.accessories] };
+    this.missingAppearance = resolved.missing;
+    this.setFacing(appearance.facing === 'left');
+    return resolved.missing;
+  }
+  setSpeed(speed: number) {
+    this.actor?.setPlaybackSpeed(speed);
+    this.playbackSpeed = speed;
+    this.update();
+  }
+  setScale(scale: number) {
+    if (!Number.isFinite(scale) || scale < 0.1 || scale > 1)
+      throw new Error('Sprite scale must be 0.1–1');
+    this.playerScale = scale;
+    this.update();
+  }
+  setBackground(background: string) {
+    if (!['forest', 'light', 'dark'].includes(background)) throw new Error('Unknown background');
+    this.background = background;
+    for (const object of this.backgroundObjects) object.setVisible(background === 'forest');
+    const color = background === 'dark' ? '#18232b' : '#d4e7da';
+    this.cameras.main.setBackgroundColor(color);
+    this.uiCamera.setBackgroundColor('rgba(0,0,0,0)');
   }
   setTwigAction(action: string) {
     const asset = this.asset('twig-creature');
@@ -244,7 +287,15 @@ export class ArtValidationScene extends Phaser.Scene {
     }
   }
   override update() {
-    this.actor?.update(this.rootX, this.rootY, this.flip, REVIEW_PLAYER_SCALE);
+    this.actor?.update(this.rootX, this.rootY, this.flip, this.playerScale);
+    if (this.anchorGuides) {
+      this.anchorGuides.clear().lineStyle(1, 0xffda86);
+      const points = this.actor?.anchors(this.rootX, this.rootY, this.flip, this.playerScale) ?? {};
+      for (const point of [{ x: this.rootX, y: this.rootY }, ...Object.values(points)]) {
+        this.anchorGuides.lineBetween(point.x - 4, point.y, point.x + 4, point.y);
+        this.anchorGuides.lineBetween(point.x, point.y - 4, point.x, point.y + 4);
+      }
+    }
     this.frog?.update(760, 520, false, REVIEW_FROG_SCALE, 22);
     this.twig?.update(920, 520, this.flip, REVIEW_TWIG_SCALE, 22);
   }
@@ -252,6 +303,12 @@ export class ArtValidationScene extends Phaser.Scene {
     return {
       zoom: this.cameras.main.zoom,
       action: this.action,
+      appearance: this.appearance,
+      missingAppearance: this.missingAppearance,
+      playbackSpeed: this.playbackSpeed,
+      playerScale: this.playerScale,
+      background: this.background,
+      placeholderAction: !this.asset('adventurer-body')?.clips[this.action],
       flip: this.flip,
       scrollX: this.cameras.main.scrollX,
       approved: VALIDATION_ASSETS.map((a) => a.key),
@@ -293,6 +350,10 @@ export function startArtValidation(
     guides: (visible: boolean) => scene.setGuides(visible),
     pan: (x: number) => scene.pan(x),
     pause: (paused: boolean) => scene.pausePreview(paused),
+    appearance: (appearance: Partial<CharacterAppearance>) => scene.setAppearance(appearance),
+    speed: (speed: number) => scene.setSpeed(speed),
+    scale: (scale: number) => scene.setScale(scale),
+    background: (background: string) => scene.setBackground(background),
     stop: () => {
       delete debug.cindervaleValidation;
       game.destroy(true);

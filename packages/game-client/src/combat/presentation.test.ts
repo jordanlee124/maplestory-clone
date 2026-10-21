@@ -6,6 +6,19 @@ import { DEFAULT_BINDINGS, actionForCode, rebind } from '../input/bindings';
 const standing = { x: 0, y: 0, vx: 0, vy: 0, grounded: true, climbing: false };
 
 describe('animation presentation', () => {
+  it('holds death against new attacks, plays respawn once, and releases hit and cast locks', () => {
+    const a = new AnimationStateMachine();
+    a.sample(0, standing, true);
+    expect(a.attack(10, true)).toBe(false);
+    expect(a.sample(20, standing, false).state).toBe('respawn');
+    expect(a.sample(500, standing, false).state).toBe('idle');
+    a.hit(600);
+    expect(a.attack(610, false)).toBe(false);
+    expect(a.sample(850, standing, false).state).toBe('idle');
+    a.attack(900, true);
+    expect(a.sample(910, { ...standing, climbing: true }, false).state).toBe('climb');
+    expect(a.sample(920, standing, false).state).toBe('idle');
+  });
   it('follows locomotion and gives death and hit priority over attacks', () => {
     const a = new AnimationStateMachine();
     expect(a.sample(0, standing, false).state).toBe('idle');
@@ -25,7 +38,8 @@ describe('animation presentation', () => {
     a.hit(200);
     expect(a.sample(200, standing, false).state).toBe('hit');
     expect(a.sample(200, standing, true).state).toBe('death');
-    expect(a.sample(1000, standing, false).state).toBe('idle');
+    expect(a.sample(1000, standing, false).state).toBe('respawn');
+    expect(a.sample(1500, standing, false).state).toBe('idle');
   });
 });
 

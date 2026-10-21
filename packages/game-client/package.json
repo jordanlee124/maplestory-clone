@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./bindings": "./src/input/bindings.ts",
+    "./appearance": "./src/player/appearance.ts",
     "./art-preview": "./src/art/preview.ts",
     "./art-validation": "./src/scenes/ArtValidationScene.ts"
   },

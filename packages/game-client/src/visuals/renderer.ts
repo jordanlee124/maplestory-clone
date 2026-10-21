@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { attachmentPosition, sampleVisual, validateVisual, type VisualAsset } from './model';
+import {
+  attachmentPosition,
+  sampleVisual,
+  validateVisual,
+  type VisualAsset,
+  type Point,
+} from './model';
 
 /** No procedural fallback: every entry requires a recorded original-art approval. */
 export function queueVisuals(
@@ -54,60 +60,127 @@ export interface ActorLayer {
   /** Independent loop, such as face blink. Otherwise follows the body action. */
   independent?: string;
   actionDepth?: Record<string, FacingDepth>;
+  offsets?: Record<string, Point>;
+  hiddenDuring?: readonly string[];
 }
 
 /** Frame pivots and body anchors replace a shared cell-size restriction. */
 export class LayeredActor {
   private action = 'idle';
   private started = 0;
+  private speed = 1;
+  private independentStarted = 0;
+  private independentElapsed = 0;
   private layers: { def: ActorLayer; sprite: Phaser.GameObjects.Sprite }[];
   get sprite() {
     return this.layers[0]!.sprite;
   }
   constructor(
     private scene: Phaser.Scene,
-    readonly body: VisualAsset,
+    public body: VisualAsset,
     layers: ActorLayer[],
   ) {
     if (layers[0]?.asset !== body) throw new Error('Body must be the first actor layer');
-    for (const layer of layers) {
-      const clips = layer.independent ? [layer.independent] : Object.keys(body.clips);
-      if (clips.some((clip) => !layer.asset.clips[clip]))
-        throw new Error(`${layer.asset.key}: incomplete layer clips`);
-      if (layer.attachTo && body.frames.some((frame) => !frame.anchors?.[layer.attachTo!]))
-        throw new Error(`${body.key}: missing ${layer.attachTo} anchor`);
-    }
+    this.validateLayers(layers);
     this.layers = layers.map((def) => ({
       def,
       sprite: scene.add.sprite(0, 0, def.asset.key, def.asset.frames[0]!.name),
     }));
   }
+  private validateLayers(layers: ActorLayer[], body = this.body) {
+    for (const layer of layers) {
+      const clips = layer.independent ? [layer.independent] : ['idle'];
+      if (clips.some((clip) => !layer.asset.clips[clip]))
+        throw new Error(`${layer.asset.key}: incomplete layer clips`);
+      if (layer.attachTo && body.frames.some((frame) => !frame.anchors?.[layer.attachTo!]))
+        throw new Error(`${body.key}: missing ${layer.attachTo} anchor`);
+    }
+  }
+  setLayers(layers: ActorLayer[]) {
+    const root = layers[0];
+    if (!root || root.attachTo || root.independent)
+      throw new Error('Body must be the first actor layer');
+    this.validateLayers(layers, root.asset);
+    const replacements = layers.slice(1).map((def) => ({
+      def,
+      sprite: this.scene.add.sprite(0, 0, def.asset.key, def.asset.frames[0]!.name),
+    }));
+    this.layers.slice(1).forEach((l) => l.sprite.destroy());
+    const sprite = this.layers[0]!.sprite;
+    if (root.asset !== this.body) sprite.setTexture(root.asset.key, root.asset.frames[0]!.name);
+    this.body = root.asset;
+    if (!this.body.clips[this.action]) this.play('idle');
+    this.layers = [{ def: root, sprite }, ...replacements];
+  }
+  setPlaybackSpeed(speed: number) {
+    if (!Number.isFinite(speed) || speed < 0 || speed > 4)
+      throw new Error('Playback speed must be 0–4');
+    this.elapsed = this.currentElapsed();
+    this.independentElapsed += (this.scene.time.now - this.independentStarted) * this.speed;
+    this.independentStarted = this.scene.time.now;
+    this.started = this.scene.time.now;
+    this.speed = speed;
+  }
+  private elapsed = 0;
+  private currentElapsed() {
+    return this.elapsed + (this.scene.time.now - this.started) * this.speed;
+  }
+  anchors(x: number, y: number, flip = false, scale = 1) {
+    const frame = sampleVisual(this.body, this.action, this.currentElapsed());
+    return Object.fromEntries(
+      Object.keys(frame.anchors ?? {}).map((anchor) => [
+        anchor,
+        attachmentPosition({ x, y }, frame, anchor, flip, scale),
+      ]),
+    );
+  }
   play(action: string, initialElapsed = 0) {
     if (!this.body.clips[action]) throw new Error(`${this.body.key}: missing action ${action}`);
     this.action = action;
-    this.started = this.scene.time.now - initialElapsed;
+    this.started = this.scene.time.now;
+    this.elapsed = initialElapsed;
   }
   update(x: number, y: number, flip = false, scale = 1, depth = 20) {
     const now = this.scene.time.now;
-    const bodyFrame = sampleVisual(this.body, this.action, now - this.started);
+    const elapsed = this.currentElapsed();
+    const bodyFrame = sampleVisual(this.body, this.action, elapsed);
     for (const { def, sprite } of this.layers) {
-      const clip = def.independent ?? this.action;
-      const f = sampleVisual(def.asset, clip, def.independent ? now : now - this.started);
+      const clip = def.independent ?? (def.asset.clips[this.action] ? this.action : 'idle');
+      const bodyDuration = this.body.clips[this.action]!.durations.reduce((a, b) => a + b, 0);
+      const layerDuration = def.asset.clips[clip]!.durations.reduce((a, b) => a + b, 0);
+      const independentTime =
+        this.independentElapsed + (now - this.independentStarted) * this.speed;
+      const f = sampleVisual(
+        def.asset,
+        clip,
+        def.independent ? independentTime : (elapsed * layerDuration) / bodyDuration,
+      );
       const point = def.attachTo
         ? attachmentPosition({ x, y }, bodyFrame, def.attachTo, flip, scale)
         : { x, y };
       const order = def.actionDepth?.[this.action] ?? def.depth;
+      const offset = def.offsets?.[bodyFrame.name] ?? { x: 0, y: 0 };
       sprite
         .setFrame(f.name)
         .setOrigin((flip ? f.width - f.pivot.x : f.pivot.x) / f.width, f.pivot.y / f.height)
-        .setPosition(point.x, point.y)
+        .setPosition(point.x + offset.x * scale * (flip ? -1 : 1), point.y + offset.y * scale)
         .setFlipX(flip)
         .setScale(scale)
         .setDepth(depth + (typeof order === 'number' ? order : flip ? order.left : order.right));
+      if (def.hiddenDuring) sprite.setVisible(!def.hiddenDuring.includes(this.action));
     }
   }
   destroy() {
     this.layers.forEach((l) => l.sprite.destroy());
+    this.layers = [];
+  }
+  setStyle(alpha: number, tint?: number, fill = false) {
+    for (const { sprite } of this.layers) {
+      sprite.setAlpha(alpha);
+      if (tint === undefined) sprite.clearTint();
+      else if (fill) sprite.setTintFill(tint);
+      else sprite.setTint(tint);
+    }
   }
   snapshot() {
     return this.layers.map(({ sprite }) => ({

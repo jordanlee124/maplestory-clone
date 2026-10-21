@@ -15,6 +15,10 @@ export class RemotePlayers {
   get(sessionId: string) {
     return this.avatars.get(sessionId);
   }
+  destroy() {
+    for (const avatar of this.avatars.values()) avatar.destroy();
+    this.avatars.clear();
+  }
 
   sync(players: Map<string, PlayerView>, mySessionId: string, delta: number) {
     // shortcut: exponential smoothing toward the latest snapshot; switch to a snapshot

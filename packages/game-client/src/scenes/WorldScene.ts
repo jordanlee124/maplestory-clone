@@ -146,6 +146,8 @@ export class WorldScene extends Phaser.Scene {
       this.room.onReconnect.remove(reconnected);
       this.room.onLeave.remove(left);
       offCombat();
+      this.others.destroy();
+      this.me.avatar.destroy();
     });
     this.game.events.emit('world-ready');
   }

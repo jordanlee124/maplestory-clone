@@ -36,7 +36,7 @@ test('validation scene contains player, frog, Twig study and preview HUD with ex
   expect(await state()).toMatchObject({ slotsOnly: false, zoom: 1 });
   expect((await state()).approved).toHaveLength(8);
   expect((await state()).candidates).toEqual([]);
-  expect((await state()).missing).toHaveLength(10);
+  expect((await state()).missing).toHaveLength(13);
   expect((await state()).actor).toHaveLength(1);
   expect((await state()).frog).toHaveLength(1);
   expect((await state()).actor[0]).toMatchObject({ key: 'adventurer-body', y: 520 });

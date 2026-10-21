@@ -197,6 +197,15 @@ it('keeps independent layer clocks, attachment pivots and mirrored depth orderin
   expect(sprites[0]!.setOrigin).toHaveBeenLastCalledWith(0.75, 78 / 80);
   expect(sprites[1]!.setPosition).toHaveBeenLastCalledWith(98, 142);
   expect(sprites[1]!.setDepth).toHaveBeenLastCalledWith(24);
+  actor.setPlaybackSpeed(0);
+  scene.time.now = 250;
+  actor.play('idle');
+  actor.update(100, 200, true);
+  expect(sprites[1]!.setFrame).toHaveBeenLastCalledWith('b');
+  actor.setPlaybackSpeed(1);
+  scene.time.now = 350;
+  actor.update(100, 200, true);
+  expect(sprites[1]!.setFrame).toHaveBeenLastCalledWith('a');
   actor.destroy();
   expect(sprites[0]!.destroy).toHaveBeenCalledOnce();
   expect(() => new LayeredActor(scene, asset, [{ asset, depth: 0, attachTo: 'missing' }])).toThrow(
@@ -241,4 +250,81 @@ it('finishes effects on their own timeline and removes update/shutdown listeners
   events.emit('shutdown');
   expect(sprite.destroy).toHaveBeenCalledOnce();
   expect(() => playVisualEffect(scene, asset, 'idle', 0, 0, 0)).toThrow('finite');
+});
+
+it('synchronizes unequal equipment timelines, offsets, visibility, replacement and cleanup', () => {
+  const sprites: Record<string, ReturnType<typeof vi.fn>>[] = [];
+  const scene = {
+    time: { now: 0 },
+    add: {
+      sprite: () => {
+        const sprite: Record<string, ReturnType<typeof vi.fn>> = {};
+        for (const method of [
+          'setFrame',
+          'setOrigin',
+          'setPosition',
+          'setFlipX',
+          'setScale',
+          'setDepth',
+          'setVisible',
+          'setAlpha',
+          'setTint',
+          'setTintFill',
+          'clearTint',
+          'setTexture',
+          'destroy',
+        ])
+          sprite[method] = vi.fn(() => sprite);
+        sprites.push(sprite);
+        return sprite;
+      },
+    },
+  };
+  const gear = {
+    ...asset,
+    key: 'gear',
+    clips: { idle: { frames: ['a', 'b'], durations: [20, 20], loop: true } },
+  };
+  const layers = [
+    { asset, depth: 0 },
+    {
+      asset: gear,
+      depth: 2,
+      attachTo: 'head',
+      offsets: { b: { x: 3, y: -2 } },
+      hiddenDuring: ['idle'],
+    },
+  ];
+  const actor = new LayeredActor(scene as never, asset, layers);
+  actor.play('idle');
+  scene.time.now = 150;
+  actor.update(100, 200, true, 2);
+  expect(sprites[1]!.setFrame).toHaveBeenLastCalledWith('b');
+  expect(sprites[1]!.setPosition).toHaveBeenLastCalledWith(90, 80);
+  expect(sprites[1]!.setVisible).toHaveBeenLastCalledWith(false);
+  actor.setPlaybackSpeed(0);
+  scene.time.now = 1000;
+  actor.update(100, 200);
+  expect(sprites[0]!.setFrame).toHaveBeenLastCalledWith('b');
+  actor.setPlaybackSpeed(0.5);
+  scene.time.now = 1120;
+  actor.update(100, 200);
+  expect(sprites[0]!.setFrame).toHaveBeenLastCalledWith('a');
+  actor.setStyle(0.4, 0xffeeee, true);
+  expect(sprites[1]!.setAlpha).toHaveBeenLastCalledWith(0.4);
+  expect(sprites[1]!.setTintFill).toHaveBeenLastCalledWith(0xffeeee);
+  expect(() =>
+    actor.setLayers([
+      { asset, depth: 0 },
+      { asset: gear, depth: 1, attachTo: 'bad' },
+    ]),
+  ).toThrow('anchor');
+  expect(sprites[1]!.destroy).not.toHaveBeenCalled();
+  actor.setLayers([{ asset: { ...asset, key: 'new-body' }, depth: 0 }]);
+  expect(sprites[0]!.setTexture).toHaveBeenCalledWith('new-body', 'a');
+  expect(sprites[1]!.destroy).toHaveBeenCalledOnce();
+  actor.destroy();
+  actor.destroy();
+  expect(sprites[0]!.destroy).toHaveBeenCalledOnce();
+  expect(() => actor.setPlaybackSpeed(NaN)).toThrow('speed');
 });
