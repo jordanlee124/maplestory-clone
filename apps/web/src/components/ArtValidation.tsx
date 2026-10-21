@@ -8,13 +8,17 @@ export default function ArtValidation() {
   const parent = useRef<HTMLDivElement>(null);
   const controls = useRef<ReturnType<typeof startArtValidation>>(undefined);
   const [ready, setReady] = useState(false);
+  const [loaded, setLoaded] = useState<readonly string[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
     let cancelled = false;
     import('@cindervale/game-client/art-validation')
       .then(({ startArtValidation }) => {
         if (!cancelled)
-          controls.current = startArtValidation(parent.current!, () => setReady(true));
+          controls.current = startArtValidation(parent.current!, (keys) => {
+            setLoaded(keys);
+            setReady(true);
+          });
       })
       .catch((e: Error) => setError(e.message));
     return () => {
@@ -26,13 +30,14 @@ export default function ArtValidation() {
     <main className="text-slate-100">
       <h1 className="p-3 text-xl">Cindervale art direction · validation scene</h1>
       <p className="px-3 pb-3">
-        First-scene visual candidate: original AI-assisted art, awaiting your visual approval. Use
-        Attack and Skill to preview the limited pose study. Production expansion is stopped. Pause
-        before selecting a pose to hold contact/cast; unpausing replays it.
+        Visual direction approved. Live Fernreach now uses this original AI-assisted design. The
+        Twig Creature pose sheet and woodland HUD panel below are new candidates awaiting review.
+        HUD values are samples, with no connection to gameplay. Full motion sets and separate
+        character layers remain unfinished. Pause before selecting a pose to inspect it.
       </p>
       <p className="px-3 pb-3">
         <a className="underline" href="#comparison">
-          Compare the live placeholder art with this candidate
+          Compare the previous placeholder art with the approved direction
         </a>
       </p>
       <div className="flex flex-wrap gap-4 p-3">
@@ -56,12 +61,25 @@ export default function ArtValidation() {
           Pose{' '}
           <select
             aria-label="Pose"
-            disabled={!ready}
+            disabled={!ready || !loaded.includes('adventurer-body')}
             onChange={(e) => controls.current?.action(e.target.value)}
             className="bg-slate-800 p-2"
           >
             {['idle', 'attack', 'skill'].map((a) => (
               <option key={a}>{a}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Twig pose{' '}
+          <select
+            aria-label="Twig pose"
+            disabled={!ready || !loaded.includes('twig-creature')}
+            onChange={(e) => controls.current?.twigAction(e.target.value)}
+            className="bg-slate-800 p-2"
+          >
+            {['idle', 'walk', 'attack', 'hit', 'defeat'].map((action) => (
+              <option key={action}>{action}</option>
             ))}
           </select>
         </label>
@@ -114,9 +132,9 @@ export default function ArtValidation() {
       <details id="comparison" className="mx-auto max-w-7xl p-3">
         <summary className="cursor-pointer text-lg">Before / candidate comparison</summary>
         <p className="py-3">
-          The live game still uses temporary art. The candidate below is a direction study awaiting
-          approval; it is not yet integrated into gameplay. Open either capture at full size to
-          judge native detail.
+          These captures compare the previous placeholder game with the approved direction study.
+          Live Fernreach now uses this design; full animation coverage is still pending. Open either
+          historical capture at full size to judge native detail.
         </p>
         <div className="grid gap-6 lg:grid-cols-2">
           {[

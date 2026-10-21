@@ -1,7 +1,9 @@
-'use client';
+import { notFound } from 'next/navigation';
+import ArtValidation from '@/components/ArtValidationLoader';
 
-import dynamic from 'next/dynamic';
-const ArtValidation = dynamic(() => import('@/components/ArtValidation'), { ssr: false });
+export const dynamic = 'force-dynamic';
 export default function ArtValidationPage() {
+  if (process.env.NODE_ENV === 'production' && process.env.ART_VALIDATION_ENABLED !== 'true')
+    notFound();
   return <ArtValidation />;
 }

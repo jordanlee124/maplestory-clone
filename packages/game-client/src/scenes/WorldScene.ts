@@ -147,6 +147,7 @@ export class WorldScene extends Phaser.Scene {
       this.room.onLeave.remove(left);
       offCombat();
     });
+    this.game.events.emit('world-ready');
   }
 
   override update(time: number, delta: number) {
@@ -231,7 +232,14 @@ export class WorldScene extends Phaser.Scene {
         for (const hit of result.hits) {
           const monster = this.monsterViews().get(hit.monsterId);
           if (monster) {
-            this.effects.damage(monster.x, monster.y, hit.damage, hit.crit);
+            this.effects.damage(
+              monster.x,
+              monster.y,
+              hit.damage,
+              hit.crit,
+              false,
+              this.registry.get('approvedArt') && monster.monsterId === 'fern-frog' ? 72 : 40,
+            );
             this.monsters.hit(hit.monsterId);
           }
           this.hitCount++;
@@ -299,6 +307,12 @@ export class WorldScene extends Phaser.Scene {
   /** Read-only browser test diagnostics. */
   combatSnapshot() {
     return {
+      appearance: {
+        style: this.registry.get('approvedArt') ? 'approved-fernreach' : 'legacy',
+        playerTexture: this.me.avatar.sprite.texture.key,
+        playerFrame: this.me.avatar.sprite.frame.name,
+        playerScale: this.me.avatar.sprite.scaleX,
+      },
       connected: this.connected,
       facing: this.me.facing,
       queuedMessages: this.room.reconnection.enqueuedMessages.length,

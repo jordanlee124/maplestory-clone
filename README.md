@@ -36,6 +36,16 @@ Controls: ← → or A/D to move, Space or Alt to jump.
 | `pnpm db:migrate`                              | Apply migrations to `DATABASE_URL`                                 |
 
 First e2e run: `pnpm exec playwright install chromium`.
+If another app holds the default ports, run an isolated test stack in PowerShell:
+
+```powershell
+$env:E2E_WEB_PORT = '3900'
+$env:E2E_API_PORT = '3901'
+$env:E2E_GAME_PORT = '3902'
+pnpm test:e2e
+```
+
+Setting `E2E_WEB_PORT` disables existing-server reuse. These variables affect the test stack only; normal `pnpm dev` uses the ports above.
 
 ## Docs
 

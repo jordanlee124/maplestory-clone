@@ -4,6 +4,7 @@ export interface Snapshot {
   name: string;
   x: number;
   y: number;
+  grounded: boolean;
   climbing: boolean;
 }
 

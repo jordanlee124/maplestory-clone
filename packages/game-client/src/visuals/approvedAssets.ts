@@ -1,5 +1,6 @@
 import { REVIEW_ASSETS, REVIEW_PLAYER_SCALE, REVIEW_FROG_SCALE } from './reviewAssets';
 import type { VisualAsset } from './model';
+import { ATTACK_WINDOWS } from '../combat/animation';
 
 const approvedKeys = [
   'fern-far',
@@ -33,6 +34,10 @@ export const APPROVED_DIRECTION_ASSETS: readonly VisualAsset[] = REVIEW_ASSETS.f
 export const LIVE_VISUAL_ASSETS: readonly VisualAsset[] = APPROVED_DIRECTION_ASSETS.map((a) => ({
   ...a,
   key: `approved-${a.key}`,
+  clips:
+    a.key === 'adventurer-body'
+      ? { ...a.clips, skill: { ...a.clips.skill!, durations: Object.values(ATTACK_WINDOWS) } }
+      : a.clips,
 }));
 export function liveVisual(key: string) {
   const asset = LIVE_VISUAL_ASSETS.find((a) => a.key === `approved-${key}`);

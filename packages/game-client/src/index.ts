@@ -31,6 +31,19 @@ export async function startGame(
   game.registry.set('room', room);
   game.registry.set('hooks', hooks);
 
+  const loaded = new Promise<void>((resolve, reject) => {
+    const ready = () => {
+      game.events.off('world-load-error', failed);
+      resolve();
+    };
+    const failed = (error: Error) => {
+      game.events.off('world-ready', ready);
+      reject(error);
+    };
+    game.events.once('world-ready', ready);
+    game.events.once('world-load-error', failed);
+  });
+
   // Read-only hook for e2e tests and debugging; exposes nothing the client can't already see.
   const debug = window as unknown as { cindervale?: unknown };
   debug.cindervale = {
@@ -38,7 +51,7 @@ export async function startGame(
     mapId: room.state.mapId,
     players: () =>
       [...(room.state.players as Map<string, PlayerView>).values()].map(
-        ({ name, x, y, climbing }) => ({ name, x, y, climbing }),
+        ({ name, x, y, grounded, climbing }) => ({ name, x, y, grounded, climbing }),
       ),
     combat: () =>
       game.scene.isActive('World')
@@ -46,11 +59,18 @@ export async function startGame(
         : undefined,
   };
 
-  return () => {
+  const stop = () => {
     delete debug.cindervale;
     game.scene.stop('World');
     game.destroy(true);
     combatEvents.get(room)?.destroy();
     void room.leave();
   };
+  try {
+    await loaded;
+  } catch (error) {
+    stop();
+    throw error;
+  }
+  return stop;
 }

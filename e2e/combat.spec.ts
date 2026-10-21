@@ -36,7 +36,13 @@ async function approach(page: Page, name: string, monsterId: string) {
     const target = (await combat(page)).monsters.find((m) => m.id === monsterId)!;
     const dx = target.x - p.x;
     const key = dx > 0 ? 'ArrowRight' : 'ArrowLeft';
-    if (Math.abs(dx) < 38 && Math.abs(p.y - target.y) < 30) {
+    // Stay inside the 80px basic reach without chasing into contact range between round trips.
+    if (Math.abs(dx) < 60) {
+      // Retaliation lifts the player; wait for a confirmed landing instead of chasing through it.
+      if (!p.grounded || Math.abs(p.y - target.y) >= 1) {
+        await page.waitForTimeout(60);
+        continue;
+      }
       const facing = dx > 0 ? 'right' : 'left';
       if ((await combat(page)).facing !== facing) {
         await page.keyboard.down(key);
@@ -96,10 +102,12 @@ test('two Phaser players damage the same monster, take AI damage, share its deat
   await page.locator('canvas').click();
   await strike(page, nameA, target);
   await expect.poll(async () => (await combat(partner)).remoteAccepted).toBeGreaterThan(0);
-  for (let i = 0; i < 5; i++) {
+  // Alternate contributions so both clear the server's integer-rounded EXP share.
+  for (let i = 0; i < 8; i++) {
     if ((await combat(page)).monsters[0]!.mode === 'dead') break;
     await page.waitForTimeout(650);
-    await strike(page, nameA, target);
+    if (i % 2 === 0) await strike(partner, nameB, target);
+    else await strike(page, nameA, target);
   }
   for (const client of [page, partner]) {
     await expect.poll(async () => (await combat(client)).monsters[0]!.mode).toBe('dead');

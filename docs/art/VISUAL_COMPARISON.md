@@ -1,8 +1,34 @@
-﻿# Visual comparison and replacement plan
+# Visual comparison and replacement plan
 
-2026-10-21 · **Populated first-scene candidate — awaiting visual approval**
+2026-10-21 · **Direction approved; first live Fernreach rollout**
 
-Open `/art-validation` to review one original adventurer, one Fern Frog, an organic platform, a detailed background plate, a separately moving transparent foreground, and a cinder-petal skill sequence. The six AI-assisted textures are visual studies, not final production assets. Normal loaders still reject candidates; only this isolated scene opts in. The live game remains on its labeled temporary artwork.
+The user approved the displayed visual direction on 2026-10-21 and identified the live game as the view requiring correction. Fernreach gameplay now uses the same six original reviewed textures: adventurer, Fern Frog, platform, background, foreground and cinder-petal effect. `/art-validation` remains the calibration view. This is a direction-approved draft integration, not finished production animation or a fidelity-match claim.
+
+Explicit approval metadata promotes only these six designs; the original candidate provenance remains unchanged. Live texture keys have an `approved-` prefix, preserving the legacy texture registry for other maps and unfinished content.
+
+## Expanded representative scene
+
+The new Phase 1.5 slice adds an original Twig Creature six-pose study and a botanical HUD skin to `/art-validation`. Both remain **unapproved review candidates**; they have not replaced the live Twig or HUD. The scene now shows one adventurer, Fern Frog, Twig, organic platform, layered scenery, basic/skill playback and labeled sample HP/MP/EXP. The Twig offers separate idle/walk/attack/hit/defeat controls. No network room, damage or reward state is fabricated.
+
+![Expanded scene at 1280x720](review/expanded-validation-1280x720.png)
+
+[Paused skill and Twig strike study](review/expanded-validation-skill-1280x720.png).
+
+Desktop evidence: [1920x1080](review/expanded-validation-1920x1080.png), [2560x1440](review/expanded-validation-2560x1440.png), [3440x1440](review/expanded-validation-3440x1440.png). These PNGs have exactly the named dimensions. Integer presentation scales are 1, 2 and 2 respectively, preserving the 1280:720 aspect ratio and ultrawide letterboxing. Review controls sit above the canvas; browser captures scroll to the canvas for framing. The 1280x720 capture is the canvas itself.
+
+The Twig's large mint eyes and pale heart-shaped face separate it from the green frog; its forked leaf crown and short root limbs retain a compact original silhouette. Approximately 64 logical pixels tall, it is smaller than the 96 px adventurer. Six separated poses are not a polished motion cycle; feet pivots, sparse acting and fine alpha edges still need review. The new illustrated panel keeps quiet dark space behind real text and functional bar geometry, but is a sample skin, not a completed HUD/hotbar/window kit. Native layered sources are absent. See [ASSET_CHECKLIST.md](ASSET_CHECKLIST.md) for the remaining order of work.
+
+Preview measurements in the Chromium software-rendered test environment were 23/23/22 FPS across the three desktop sizes with WebGL multisampling enabled, then 37/31/34 FPS with it disabled and the same per-texture filtering retained. This focused comparison improved performance without changing the composition; the 60 FPS supported-hardware target is still open. Final QA results are recorded in PROGRESS.md. Do not interpret passing checks or generated imagery as visual fidelity approval.
+
+## Live gameplay captures
+
+![Live Fernreach at 1280×720](review/live-fernreach-1280x720.png)
+
+![Live Fernreach at 1920×1080](review/live-fernreach-1920x1080.png)
+
+![Two-player authoritative combat](review/live-two-player-combat.png)
+
+The captures below document the earlier isolated comparison, rather than the current live composition.
 
 ## Actual browser captures
 
@@ -33,27 +59,22 @@ The earlier `validation-slots-*.png` files document the initial empty measuremen
 
 All values refer to this composition at the default camera zoom, not a permanent production sprite-size mandate. Player height uses an inspected 426-source-pixel upright drawing rendered at 96 logical pixels; Fern Frog uses an approximately 512-pixel source silhouette rendered at 62. The new drawings are independent designs, not rescaled versions of the old procedural sprites.
 
-## How to review
+## Live integration and remaining replacement plan
 
-The live game's temporary-art caption links directly to `/art-validation`. On that page, expand **Before / candidate comparison** to see the captured live placeholder game alongside the proposed scene. Each capture opens at its native 1280×720 size. These are review evidence, separate from the runtime art registry; neither the screenshots nor a repeated task request grant visual approval.
+The live game caption links to `/art-validation`. Idle/Attack/Skill, facing, zoom and parallax controls remain available; pause before choosing an action to inspect its contact/cast sample. Historical before/candidate images are retained as evidence. The isolated scene does not connect to a game room or determine combat outcomes.
 
-Use Idle, Attack and Skill, facing, camera zoom and parallax controls. Pause **before** choosing Attack or Skill to hold a deterministic contact/cast sample; unpausing replays the selected pose. Measurement guides expose the existing collision sizes. The scene does not connect to a game room or calculate combat outcomes.
+In gameplay the adventurer is about 96 logical pixels tall and the frog about 62 at camera 1. Feet pivots follow existing player/monster coordinates; platform art spans the existing content surfaces. Background scroll is 0.12 and the live foreground is 0.65 behind the combat actors. The single composed background and repeated foreground are interim scenery layers, not a completed set of separately authored far/mid planes. Camera framing remains 1280x720 with integer desktop display scaling and letterboxing.
 
-Approve or revise the silhouette, face appeal, proportions, palette, scenery composition and overall rendering treatment first. Do not infer approval from passing tests. The first-scene scope is complete enough for direction review; production cleanup and animation coverage are outstanding.
+1. Clean alpha edges and overlapping/clipped exports. Separate the approved adventurer into body, rear/front hair, face, outfit, weapon and accessories. The renderer supports independent clips and attachments, but the current PNG is flattened and all classes share its prototype outfit. No equipment appearance is claimed.
+2. Author walk, jump, fall, climb, hurt and defeat drawings, plus polished idle/basic/skill sequences. Missing player actions currently hold the idle drawing; authoritative state, movement and attack timing still run. The frog likewise uses its clean idle crop, cosmetic hit recoil/flash and a defeat fade, without authored locomotion/attack/defeat motion. Server messages report landed monster attacks; true windup telegraphs require a future typed server/protocol addition.
+3. Replace provisional terrain crops with seamless modular caps/fills, split far/mid background plates and author varied foliage. Keep support lines, ledges and ladders aligned to unchanged shared collision data. The apparent actor silhouette is larger than its existing hurtbox; review future targeting/telegraphs against that difference before changing any shared combat rules.
+4. Produce matching Twig Creature, Crystal Beetle, other classes/maps, HUD panels, icons and font treatment within the approved language. These still use identifiable legacy placeholders; defeat/respawn rings and functional HUD bars are also temporary.
+5. Review each new drawing/motion set at native gameplay scale before expanding its variants. Keep provenance, frame pivots, per-texture filtering and before/after captures current. Animation polish and a complete art set remain separate acceptance work.
 
-## Replacement sequence after this review
-
-1. Obtain visual approval or specific revisions for this single scene. No additional class, monster, equipment family or map asset production before that decision.
-2. Clean selected alpha edges, overlapping/clipped pose exports and pivots. Separate the approved character design into body, rear/front hair, face, outfit, weapon and accessory layers; the renderer already supports independent layer clips and attachments.
-3. Produce the missing walk/jump/fall/hit/defeat and monster action drawings for this same scene; replace draft timing/crops with reviewed motion. Finalize the skill's arc/contact/fade and effect obstruction budget.
-4. Separate the environment's far/mid planes and modular terrain caps/fills without changing collision geometry; author the missing UI panel/icon/font assets when that design scope is approved.
-5. Record explicit reviewer/date/source/usage approval in `VALIDATION_ASSETS`, then integrate the approved renderer and scenery into Fernreach gameplay. Adapt authoritative event-to-clip mapping and rerun movement/combat/multiplayer tests.
-6. Expand to other classes, equipment, monsters and maps only within the approved design language.
-
-Source history and selected-raster hashes: `art/source/review/PROVENANCE.md` and `assets.json`. No layered authoring source or human art approval is implied by generated raster masters. See `ART_DIRECTION.md` for the full production contract and `docs/milestones/PROGRESS.md` for actual verification results.
+Source history and selected-raster hashes: `art/source/review/PROVENANCE.md` and `assets.json`. The user approved the direction; no layered authoring source or completed motion set is implied by generated raster masters. See `ART_DIRECTION.md` for the full production contract and `docs/milestones/PROGRESS.md` for actual verification results.
 
 ## Verified results
 
-All 122 unit/integration tests passed with Turbo cache bypassed (25 client tests). Lint, formatting, workspace typechecks and the production browser build passed. All 9 Chromium Playwright tests passed in one full run (2.0 minutes), including imported review assets, a paused skill capture, approval status, existing art baselines, DPR sizing, movement, multiplayer combat/rewards/reconnect and ladder/menu exit. Both desktop captures and the skill frame were visually inspected. Final source validation was tightened to require review provenance/date as well as production approval fields, then the client tests and typecheck were rerun.
+See the latest live-rollout entry in `docs/milestones/PROGRESS.md` for exact final gate results. Live browser checks assert the approved texture keys and scale, all five frog instances, and capture both desktop resolutions. Existing movement, combat, shared deaths/rewards, reconnect, input remapping, ladder/menu and legacy visual checks remain enabled.
 
-Not verified: final animation quality, separate production character layers, approved final PNG imports into live gameplay, other browsers, fractional OS scaling or load/performance with a complete art set. The scene contains six review textures totalling approximately 11.8 MB; optimize after visual direction approval rather than claiming a production streaming budget from this prototype.
+Not verified: complete authored animation, separate production character layers, other browsers, fractional OS scaling or real-hardware performance with a complete art set. The six textures total approximately 11.8 MB; a production streaming budget and export optimization remain outstanding. The two-browser software-rendered test is a correctness check, not a hardware performance certification.

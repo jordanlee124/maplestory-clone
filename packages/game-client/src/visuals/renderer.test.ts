@@ -1,9 +1,134 @@
 import { expect, it, vi } from 'vitest';
-import type Phaser from 'phaser';
-import { LayeredActor, playVisualEffect, queueVisuals, registerVisuals } from './renderer';
 import type { VisualAsset } from './model';
 
-vi.mock('phaser', () => ({ default: { Textures: { FilterMode: { NEAREST: 1, LINEAR: 0 } } } }));
+vi.mock('phaser', () => ({
+  default: { Textures: { FilterMode: { NEAREST: 1, LINEAR: 0 } } },
+}));
+import type Phaser from 'phaser';
+import { LayeredActor, playVisualEffect, queueVisuals, registerVisuals } from './renderer';
+
+const body: VisualAsset = {
+  key: 'body',
+  url: '/assets/body-v01.png',
+  size: { width: 80, height: 80 },
+  filter: 'nearest',
+  candidate: { date: '2026-10-21', provenance: 'original test fixture' },
+  frames: [
+    {
+      name: 'still',
+      x: 0,
+      y: 0,
+      width: 80,
+      height: 80,
+      pivot: { x: 40, y: 80 },
+      anchors: { hand: { x: 60, y: 40 } },
+    },
+  ],
+  clips: {
+    idle: { frames: ['still'], durations: [100], loop: true },
+    attack: { frames: ['still'], durations: [100], loop: false },
+  },
+};
+
+it('queues only the selected map assets and reuses already loaded textures', () => {
+  const image = vi.fn();
+  const scene = { load: { image }, textures: { exists: (key: string) => key === 'body' } };
+  const extra = { ...body, key: 'outfit', url: '/assets/outfit-v01.png' };
+  queueVisuals(scene as never, [body, extra], true);
+  expect(image.mock.calls).toEqual([['outfit', extra.url]]);
+  expect(() => queueVisuals(scene as never, [body, body], true)).toThrow('Duplicate');
+  expect(() => queueVisuals(scene as never, [body])).toThrow('unapproved');
+});
+
+it('keeps mandatory assets strict and allows explicitly missing review slots', () => {
+  const scene = { textures: { exists: () => false } };
+  expect(() => registerVisuals(scene as never, [body], true)).toThrow('failed to load');
+  expect(registerVisuals(scene as never, [body], true, true)).toEqual([]);
+});
+
+it('registers trimmed frames, checks real dimensions and selects the texture filter', () => {
+  const texture = {
+    getSourceImage: () => ({ width: 80, height: 80 }),
+    setFilter: vi.fn(),
+    has: () => false,
+    add: vi.fn(),
+  };
+  const scene = { textures: { exists: () => true, get: () => texture } };
+  expect(registerVisuals(scene as never, [body], true)).toEqual([body]);
+  expect(texture.setFilter).toHaveBeenCalledWith(1);
+  registerVisuals(scene as never, [{ ...body, filter: 'linear' }], true);
+  expect(texture.setFilter).toHaveBeenLastCalledWith(0);
+  expect(texture.add).toHaveBeenCalledWith('still', 0, 0, 0, 80, 80);
+  expect(() =>
+    registerVisuals(scene as never, [{ ...body, size: { width: 90, height: 80 } }], true),
+  ).toThrow('dimensions');
+});
+
+it('keeps equipment attached through mirroring, scale and action-specific facing order', () => {
+  const sprites: Record<string, unknown>[] = [];
+  const scene = {
+    time: { now: 0 },
+    add: {
+      sprite(_x: number, _y: number, key: string) {
+        const sprite: Record<string, unknown> = { texture: { key }, frame: { name: 'still' } };
+        Object.assign(sprite, {
+          setFrame(name: string) {
+            sprite.frame = { name };
+            return sprite;
+          },
+          setOrigin(x: number, y: number) {
+            sprite.origin = { x, y };
+            return sprite;
+          },
+          setPosition(x: number, y: number) {
+            Object.assign(sprite, { x, y });
+            return sprite;
+          },
+          setFlipX(flip: boolean) {
+            sprite.flipX = flip;
+            return sprite;
+          },
+          setScale(scale: number) {
+            sprite.scaleX = scale;
+            return sprite;
+          },
+          setDepth(depth: number) {
+            sprite.depth = depth;
+            return sprite;
+          },
+          destroy: vi.fn(),
+        });
+        sprites.push(sprite);
+        return sprite;
+      },
+    },
+  };
+  const weapon: VisualAsset = {
+    ...body,
+    key: 'weapon',
+    frames: [{ ...body.frames[0]!, pivot: { x: 10, y: 20 } }],
+  };
+  const actor = new LayeredActor(scene as never, body, [
+    { asset: body, depth: 0 },
+    {
+      asset: weapon,
+      depth: { left: -2, right: 2 },
+      attachTo: 'hand',
+      actionDepth: { attack: { left: 3, right: -1 } },
+    },
+  ]);
+  actor.update(100, 200, false, 2, 10);
+  expect(actor.snapshot()[1]).toMatchObject({ x: 140, y: 120, scale: 2, depth: 12 });
+  actor.update(100, 200, true, 2, 10);
+  expect(actor.snapshot()[1]).toMatchObject({ x: 60, y: 120, depth: 8 });
+  expect(sprites[1]!.origin).toEqual({ x: 70 / 80, y: 20 / 80 });
+  actor.play('attack');
+  actor.update(100, 200, true, 2, 10);
+  expect(actor.snapshot()[1]!.depth).toBe(13);
+  actor.destroy();
+  for (const s of sprites) expect(s.destroy).toHaveBeenCalledOnce();
+});
+
 const asset: VisualAsset = {
   key: 'body',
   url: '/assets/body.png',
@@ -37,27 +162,7 @@ const asset: VisualAsset = {
   ],
   clips: { idle: { frames: ['a', 'b'], durations: [100, 100], loop: true } },
 };
-it('queues only explicitly approved assets, rejects duplicates and selects texture filtering per asset', () => {
-  const texture = {
-    getSourceImage: () => ({ width: 100, height: 80 }),
-    setFilter: vi.fn(),
-    has: () => false,
-    add: vi.fn(),
-  };
-  const scene = {
-    load: { image: vi.fn() },
-    textures: { exists: () => true, get: () => texture },
-  } as unknown as Phaser.Scene;
-  queueVisuals(scene, [asset]);
-  expect(scene.load.image).toHaveBeenCalledWith('body', '/assets/body.png');
-  expect(() => queueVisuals(scene, [asset, asset])).toThrow('Duplicate');
-  registerVisuals(scene, [asset]);
-  expect(texture.setFilter).toHaveBeenLastCalledWith(1);
-  registerVisuals(scene, [{ ...asset, key: 'mist', filter: 'linear' }]);
-  expect(texture.setFilter).toHaveBeenLastCalledWith(0);
-  texture.getSourceImage = () => ({ width: 10, height: 10 });
-  expect(() => registerVisuals(scene, [asset])).toThrow('dimensions');
-});
+
 it('keeps independent layer clocks, attachment pivots and mirrored depth ordering', () => {
   const sprites: Record<string, ReturnType<typeof vi.fn>>[] = [];
   const scene = {

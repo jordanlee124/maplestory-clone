@@ -22,22 +22,15 @@ test('climbs a ladder in Fernreach Fields and exits via the Esc menu', async ({ 
   ).toBe('fernreach-fields');
   await page.locator('canvas').click();
 
-  // Walk to the ladder, then nudge until within grab range.
+  // Hold Up while approaching so a rendered-frame tap cannot skip the 10px grab band.
   await page.keyboard.down('ArrowRight');
+  await page.keyboard.down('ArrowUp');
   await expect
-    .poll(async () => (await me(page, name)).x, { timeout: 15_000, intervals: [50] })
-    .toBeGreaterThan(LADDER.x - 60);
+    .poll(async () => (await me(page, name)).climbing, { timeout: 15_000, intervals: [50] })
+    .toBe(true);
   await page.keyboard.up('ArrowRight');
-  for (let i = 0; i < 40; i++) {
-    await page.waitForTimeout(200);
-    const { x } = await me(page, name);
-    if (Math.abs(x - LADDER.x) <= 6) break;
-    await tap(page, x < LADDER.x ? 'ArrowRight' : 'ArrowLeft');
-  }
 
   // Climb to the top and step onto the ledge.
-  await page.keyboard.down('ArrowUp');
-  await expect.poll(async () => (await me(page, name)).climbing).toBe(true);
   await expect
     .poll(async () => me(page, name), { timeout: 10_000 })
     .toMatchObject({ x: LADDER.x, y: LADDER.top, climbing: false });

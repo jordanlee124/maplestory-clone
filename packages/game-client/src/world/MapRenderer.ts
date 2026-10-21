@@ -1,6 +1,7 @@
 import type { MapDef } from '@cindervale/content';
 import type Phaser from 'phaser';
 import { assetByKey } from '../art/manifest';
+import { renderFernreachArt } from './FernreachArt';
 
 /** Deterministic pseudo-random in [0, 1) so decorations are stable across reloads. */
 const hash = (n: number) => {
@@ -14,28 +15,32 @@ export function renderMap(scene: Phaser.Scene, def: MapDef) {
   const { theme } = def;
   scene.cameras.main.setBackgroundColor(theme.sky);
 
-  for (let i = 0; i * 300 < width; i++) {
+  const painted = !!scene.registry.get('approvedArt');
+  if (painted) renderFernreachArt(scene, def);
+  else {
+    for (let i = 0; i * 300 < width; i++) {
+      scene.add
+        .image(i * 300 + hash(i) * 120, 60 + hash(i + 50) * 140, 'cloud')
+        .setOrigin(0, 0)
+        .setScrollFactor(0.1, 1)
+        .setAlpha(0.9);
+    }
     scene.add
-      .image(i * 300 + hash(i) * 120, 60 + hash(i + 50) * 140, 'cloud')
+      .tileSprite(0, height - 420, width, 256, 'bg-hills-far')
       .setOrigin(0, 0)
-      .setScrollFactor(0.1, 1)
-      .setAlpha(0.9);
+      .setScrollFactor(0.2, 1)
+      .setTint(theme.hillsFar);
+    // Fill below the far hills so no sky shows between them and the ground.
+    scene.add
+      .rectangle(0, height - 166, width, 166, theme.hillsFar)
+      .setOrigin(0, 0)
+      .setScrollFactor(0.2, 1);
+    scene.add
+      .tileSprite(0, height - 280, width, 200, 'bg-hills-near')
+      .setOrigin(0, 0)
+      .setScrollFactor(0.5, 1)
+      .setTint(theme.hillsNear);
   }
-  scene.add
-    .tileSprite(0, height - 420, width, 256, 'bg-hills-far')
-    .setOrigin(0, 0)
-    .setScrollFactor(0.2, 1)
-    .setTint(theme.hillsFar);
-  // Fill below the far hills so no sky shows between them and the ground.
-  scene.add
-    .rectangle(0, height - 166, width, 166, theme.hillsFar)
-    .setOrigin(0, 0)
-    .setScrollFactor(0.2, 1);
-  scene.add
-    .tileSprite(0, height - 280, width, 200, 'bg-hills-near')
-    .setOrigin(0, 0)
-    .setScrollFactor(0.5, 1)
-    .setTint(theme.hillsNear);
 
   // Ladders sit behind platforms and poke a few pixels above the top they lead to.
   const ladderOrigin = assetByKey('ladder').origin;
@@ -45,6 +50,7 @@ export function renderMap(scene: Phaser.Scene, def: MapDef) {
       .setOrigin(ladderOrigin.x, ladderOrigin.y);
   }
 
+  if (painted) return;
   const groundY = Math.max(...platforms.map((p) => p.y));
   platforms.forEach((p, i) => {
     scene.add.tileSprite(p.x, p.y, p.width, 32, 'tile-grass').setOrigin(0, 0);

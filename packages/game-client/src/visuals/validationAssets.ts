@@ -18,6 +18,7 @@ export const VALIDATION_SLOTS = [
   ['adventurer-weapon', 'Original seed-lantern blade'],
   ['adventurer-accessory', 'Seed-bell accessory / independent sway'],
   ['fern-frog', 'Fern crown / rounded frog / expressive eyes'],
+  ['twig-creature', 'Rounded bark creature / sapling crown / expressive mint eyes'],
   ['attack-effect', 'Basic attack / readable directional arc'],
   ['skill-effect', 'Cinder-petal skill / soft glow'],
   ['ambient-mote', 'Single approved pollen particle'],
@@ -33,4 +34,5 @@ export const ACTIONS = [
   'skill',
   'hit',
   'defeat',
+  'climb',
 ] as const;

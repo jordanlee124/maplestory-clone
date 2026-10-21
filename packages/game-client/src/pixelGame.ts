@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { integerDisplayScale, VIEWPORT } from './viewport';
 
-/** Fixed logical viewport, nearest filtering, integer CSS zoom and horizontal letterboxing. */
+/** Fixed logical viewport, per-texture filtering, integer CSS zoom and horizontal letterboxing. */
 export function createPixelGame(
   parent: HTMLElement,
   scenes: Phaser.Types.Scenes.SceneType[],
@@ -16,7 +16,8 @@ export function createPixelGame(
     pixelArt: !options.mixedFiltering,
     roundPixels: true,
     antialias: !!options.mixedFiltering,
-    antialiasGL: !!options.mixedFiltering,
+    // Texture filtering handles painted/alpha edges without multisampling every sprite quad.
+    antialiasGL: false,
     backgroundColor: '#000000',
     scale: { mode: Phaser.Scale.NONE, zoom, autoRound: true },
     scene: scenes,

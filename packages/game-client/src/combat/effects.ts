@@ -1,20 +1,27 @@
 import { BASIC_ATTACK_ID } from '@cindervale/content';
 import type Phaser from 'phaser';
+import { liveVisual } from '../visuals/approvedAssets';
+import { playVisualEffect } from '../visuals/renderer';
 
 /** Short, bounded effects; no full-screen flashes or camera shake. */
 export class CombatEffects {
   private numbers: Phaser.GameObjects.Text[] = [];
   constructor(private readonly scene: Phaser.Scene) {}
 
-  damage(x: number, y: number, damage: number, crit = false, player = false) {
+  damage(x: number, y: number, damage: number, crit = false, player = false, height = 40) {
     const text = this.scene.add
-      .text(Math.round(x), Math.round(y - 40), `${crit ? '✦ ' : ''}${damage}`, {
-        fontFamily: 'monospace',
-        fontSize: crit ? '22px' : '17px',
-        color: player ? '#ffb4ad' : crit ? '#ffe078' : '#ffffff',
-        stroke: '#261c35',
-        strokeThickness: 4,
-      })
+      .text(
+        Math.round(x),
+        Math.round(y - (player && this.scene.registry.get('approvedArt') ? 104 : height)),
+        `${crit ? '✦ ' : ''}${damage}`,
+        {
+          fontFamily: 'monospace',
+          fontSize: crit ? '22px' : '17px',
+          color: player ? '#ffb4ad' : crit ? '#ffe078' : '#ffffff',
+          stroke: '#261c35',
+          strokeThickness: 4,
+        },
+      )
       .setOrigin(0.5)
       .setDepth(30);
     this.numbers.push(text);
@@ -46,6 +53,18 @@ export class CombatEffects {
   }
 
   attack(x: number, y: number, skillId: string, facing: 'left' | 'right') {
+    if (this.scene.registry.get('approvedArt')) {
+      playVisualEffect(
+        this.scene,
+        liveVisual('skill-effect'),
+        'play',
+        x + (facing === 'left' ? -50 : 50),
+        y - 8,
+        18,
+        facing === 'left',
+      ).setScale(skillId === BASIC_ATTACK_ID ? 0.2 : 0.33);
+      return;
+    }
     const colors: Record<string, number> = {
       'flame-cleave': 0xffaa66,
       'gust-arrow': 0x9eeec0,

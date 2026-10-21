@@ -33,8 +33,9 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
     let cancelled = false;
     let teardown: (() => void) | undefined;
     import('@cindervale/game-client')
-      .then(({ startGame }) =>
-        startGame(
+      .then(({ startGame }) => {
+        if (cancelled) return;
+        return startGame(
           container.current!,
           { gameUrl: GAME_URL, token, characterId, mapId },
           {
@@ -42,10 +43,11 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
             bindings: () => bindingsRef.current,
             inputEnabled: () => !settingsOpen.current,
           },
-        ),
-      )
+        );
+      })
       .then(
         (stop) => {
+          if (!stop) return;
           if (cancelled) return stop();
           teardown = stop;
           setStatus('playing');
@@ -74,11 +76,13 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
         Z: loot · Enter: respawn · Esc: menu · F3: debug
       </p>
       <p className="text-xs text-amber-100/60">
-        Temporary original pixel-art placeholders. One class skill is currently available in slot Q.{' '}
-        <a className="underline" href="/art-validation" target="_blank" rel="noreferrer">
-          Review the proposed art direction
-        </a>
-        .
+        Approved Fernreach art direction is live. Animation coverage and class outfits are draft;
+        Twig Creature and other-map art still use placeholders.{' '}
+        {process.env.NODE_ENV !== 'production' && (
+          <a className="underline" href="/art-validation" target="_blank" rel="noreferrer">
+            View the art validation scene
+          </a>
+        )}
       </p>
       <KeybindingSettings
         bindings={bindings}

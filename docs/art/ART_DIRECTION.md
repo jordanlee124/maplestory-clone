@@ -1,10 +1,12 @@
 # Cindervale Online — art direction
 
-2026-10-21 · Revised direction · **First-scene candidate available; awaiting visual approval**
+2026-10-21 · **Visual direction approved by the user; first live Fernreach integration**
 
-The representative scene is now populated at `/art-validation` with six original AI-assisted review textures: an adventurer pose study, Fern Frog, organic platform, background plate, transparent foreground and skill sequence. These are candidates, not final or approved art. See `VISUAL_COMPARISON.md` for actual captures and critique, and `art/source/review/PROVENANCE.md` for source history. Live gameplay has not adopted this unapproved set.
+The user approved the displayed direction on 2026-10-21. Live Fernreach now uses the six reviewed designs: adventurer, Fern Frog, organic platform, background, foreground and skill effect. Explicit approval metadata is recorded in `visuals/approvedAssets.ts`; namespaced live textures avoid legacy-key conflicts. This approves the direction and first integration, not a claim of complete animation coverage or finished production cleanup. `/art-validation` remains the calibration scene; `VISUAL_COMPARISON.md` records actual captures and remaining limits.
 
 This document supersedes the visual constraints in `PIXEL_ART_GUIDE.md` for new production artwork. The older manifest remains the contract for existing temporary drawings. The target is the richness of a modern illustrated 2D online RPG: expressive chibi actors, layered costumes, authored animation, organic scenery and luminous combat effects. It is not a generic retro aesthetic. Increasing the resolution of the current drawings will not meet this target.
+
+The expanded Phase 1.5 review adds a Twig Creature pose study and woodland HUD panel as **unapproved candidates**, visible only in the validation scene. See [ASSET_PIPELINE.md](ASSET_PIPELINE.md), [ANIMATION_STANDARDS.md](ANIMATION_STANDARDS.md) and [ASSET_CHECKLIST.md](ASSET_CHECKLIST.md) for the import contract, motion coverage and remaining production work. New review images do not inherit the prior six-design approval.
 
 MapleStory is a presentation reference only. Do not copy, extract, trace, recolor or redistribute its protected assets, maps, characters, UI, logos, animations or effects. The numbers below are Cindervale review proposals, not measurements of that game's proprietary sprites. No fidelity match is claimed.
 
@@ -20,7 +22,7 @@ MapleStory is a presentation reference only. Do not copy, extract, trace, recolo
 | `art/manifest.ts`, `player/EquipmentLayers.ts` | Canonical 64×64 cells, one pose clock, five overlay slots; all overlays copy the body frame.                                                                                       | Good alignment baseline, unsuitable as a universal production rig. Face, hair, accessories and FX need independent dimensions/timing and attachment anchors.         |
 | `pixelGame.ts`, `art/pipeline.ts`              | 1280×720 logical canvas, camera 1, integer CSS display zoom, all legacy textures nearest, antialiasing disabled.                                                                   | Stable existing pixel geometry, but painted scenery/soft FX need explicit per-texture filtering. Camera framing must be reviewed with real silhouettes.              |
 
-There are **zero approved production PNGs**, 16 loaded legacy placeholder assets, and five missing legacy equipment specifications. The approved validation registry stays empty; the isolated scene explicitly opts in to six separate review candidates. No generated shape, calibration marker, screenshot or concept becomes approved by passing tests.
+Six reviewed designs now have explicit user-approval metadata. Legacy placeholder textures remain for other maps and unfinished content, including Twig Creature and Crystal Beetle. The original review metadata stays unchanged as source history; a separate explicit whitelist promotes only the approved six. Passing tests does not approve future assets or finish missing animation drawings.
 
 ## Character proportions and screen tests
 
@@ -89,7 +91,7 @@ Frame counts below are initial production bids, subject to motion review. The re
 | Defeat       | 6–8 drawings, then hold; readable collapse and hair/costume follow-through; never slide the feet pivot                                                               |
 | Fern Frog    | Idle 6, movement 6–8, attack 6, hit 3, defeat 6; crown lags body squash; separate respawn FX                                                                         |
 
-Current gameplay still uses its legacy pose controller and frame set. The richer renderer is exercised separately pending approved art; mapping these clips into live `Avatar`/`Monsters` is a later integration step after approval. Do not present the new counts as existing authored animation. Monster v3 messages provide landed attacks, not windups/misses, so accurately timed monster telegraphs require a future typed protocol/server extension.
+Live Fernreach maps its existing animation state machine into the approved renderer for idle/basic/skill presentation. Missing locomotion, climb, hurt and defeat drawings hold idle; the frog has one clean idle crop with hit recoil/flash and a defeat fade. Other maps retain the legacy frame set. These counts are production requirements, not existing authored animation. Monster v3 messages provide landed attacks, not windups/misses, so accurately timed monster telegraphs require a future typed protocol/server extension.
 
 ## Combat effects and UI
 
@@ -101,7 +103,7 @@ The sample panel slot is 288×120 logical px at the upper right. Commission an o
 
 Logical game coordinates remain 1280×720. Camera zoom is configurable from 0.5–2 through `WorldHooks.cameraZoom`; default 1 preserves gameplay. The review board exposes 0.75/1/1.25/1.5 plus a parallax pan slider, fixed-camera review text and a separate world camera. Noninteger camera zoom intentionally trades exact actor pixel geometry for framing exploration; approve crispness at the selected zoom before shipping. CSS display scaling remains integer with letterboxing/scrolling, not arbitrary FIT.
 
-The mixed-art factory option enables renderer antialiasing and lets each approved texture choose its filter. Legacy gameplay and `/art-preview` retain their current settings and baselines. `roundPixels` remains enabled; soft FX interpolate texture samples rather than being snapped to an actor's frame grid. Layered actors, finite animated effects and approved-texture ambient particles are independent presentation objects.
+The mixed-art factory option enables texture antialiasing and lets each approved texture choose its filter. WebGL context multisampling stays off: texture sampling handles painted/alpha edges without multisampling every quad. Other maps and `/art-preview` retain their legacy settings and baselines; live Fernreach opts into mixed filtering. `roundPixels` remains enabled; soft FX interpolate texture samples rather than being snapped to an actor's frame grid. Layered actors, finite animated effects and approved-texture ambient particles are independent presentation objects.
 
 No physics, damage, rewards, HP, AI, collision bounds or network protocol changed. Player collision stays 24×48; monster bounds stay content-owned. Visual bounds and root pivots do not alter them. Live equipment appearance still needs authoritative equipped-item data and a UI. Relevant Phaser APIs: [texture filtering](https://docs.phaser.io/api-documentation/3.88.2/class/textures-texture), [camera zoom](https://docs.phaser.io/phaser/concepts/cameras); behavior also checked against installed Phaser 3.90 types/source.
 
@@ -129,8 +131,8 @@ For static plates, represent one frame and a looping `idle` clip. No universal a
 1. Review one adventurer silhouette/face, one Fern Frog silhouette and a Fernreach composition at the real viewport. Choose visual height and camera framing together.
 2. Review the isolated first-scene candidates, then clean/separate the approved designs into production layers. Import **only approved** artwork into gameplay. Verify alpha edges, pivots, mirroring, attachment motion and front/rear ordering.
 3. Review idle/walk/attack/hit/defeat and the skill effect at normal speed and frame-by-frame. Check enemy visibility under effects, not just attractive stills.
-4. Capture 1280×720 and 1920×1080, record measured visible bounds, and obtain visual approval for this single scene. Current captures now show the populated candidate and its skill study; they do not imply visual acceptance or production-ready animation.
+4. Capture 1280×720 and 1920×1080, record measured visible bounds, and obtain visual approval for this single scene. The user approved the populated scene direction on 2026-10-21; live captures now document its Fernreach integration. Production-ready animation remains outstanding.
 5. Integrate the approved rig and scenery into Fernreach while retaining collision data; adapt legacy pose/event mapping and add regression baselines. Re-run movement, combat and multiplayer gates.
-6. Expand the approved design family to further equipment, Twig Creature, Crystal Beetle, other classes, UI and maps. Production remains stopped at the first-scene review boundary until approval.
+6. Expand the approved design family to further equipment, Twig Creature, Crystal Beetle, other classes, UI and maps. Direction approval permits the rollout; each new asset and motion set still requires review before variant expansion.
 
 See `VISUAL_COMPARISON.md` for screenshot evidence and the honest status of each visual criterion.

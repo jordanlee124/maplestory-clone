@@ -12,7 +12,7 @@ export function queueVisuals(
     validateVisual(a, allowCandidate);
     if (keys.has(a.key)) throw new Error(`Duplicate visual: ${a.key}`);
     keys.add(a.key);
-    scene.load.image(a.key, a.url);
+    if (!scene.textures.exists(a.key)) scene.load.image(a.key, a.url);
   }
 }
 
@@ -20,10 +20,15 @@ export function registerVisuals(
   scene: Phaser.Scene,
   assets: readonly VisualAsset[],
   allowCandidate = false,
+  allowMissing = false,
 ) {
+  const loaded: VisualAsset[] = [];
   for (const a of assets) {
     validateVisual(a, allowCandidate);
-    if (!scene.textures.exists(a.key)) throw new Error(`Visual failed to load: ${a.key}`);
+    if (!scene.textures.exists(a.key)) {
+      if (allowMissing) continue;
+      throw new Error(`Visual failed to load: ${a.key}`);
+    }
     const texture = scene.textures.get(a.key);
     const image = texture.getSourceImage() as HTMLImageElement;
     if (image.width !== a.size.width || image.height !== a.size.height)
@@ -35,17 +40,20 @@ export function registerVisuals(
     );
     for (const f of a.frames)
       if (!texture.has(f.name)) texture.add(f.name, 0, f.x, f.y, f.width, f.height);
+    loaded.push(a);
   }
+  return loaded;
 }
 
+type FacingDepth = number | { left: number; right: number };
 export interface ActorLayer {
   asset: VisualAsset;
-  depth: number;
+  depth: FacingDepth;
   /** Root-body anchor, e.g. head or hand; omitted means the shared feet anchor. */
   attachTo?: string;
   /** Independent loop, such as face blink. Otherwise follows the body action. */
   independent?: string;
-  actionDepth?: Record<string, number>;
+  actionDepth?: Record<string, FacingDepth>;
 }
 
 /** Frame pivots and body anchors replace a shared cell-size restriction. */
@@ -88,13 +96,14 @@ export class LayeredActor {
       const point = def.attachTo
         ? attachmentPosition({ x, y }, bodyFrame, def.attachTo, flip, scale)
         : { x, y };
+      const order = def.actionDepth?.[this.action] ?? def.depth;
       sprite
         .setFrame(f.name)
         .setOrigin((flip ? f.width - f.pivot.x : f.pivot.x) / f.width, f.pivot.y / f.height)
         .setPosition(point.x, point.y)
         .setFlipX(flip)
         .setScale(scale)
-        .setDepth(depth + (def.actionDepth?.[this.action] ?? def.depth));
+        .setDepth(depth + (typeof order === 'number' ? order : flip ? order.left : order.right));
     }
   }
   destroy() {

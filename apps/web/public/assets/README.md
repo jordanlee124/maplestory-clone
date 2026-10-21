@@ -1,7 +1,7 @@
 # Approved runtime art
 
-No approved replacement PNGs have been supplied. The game currently uses explicitly identified procedural placeholders.
+The user approved the first visual direction on 2026-10-21. Fernreach now uses the reviewed adventurer, Fern Frog, platform, background/foreground and effect designs; other maps and unfinished monsters retain identified placeholders.
 
-`review/` contains six original AI-assisted **candidate** PNGs for the isolated `/art-validation` scene. They are not production-approved replacements. Provenance and hashes are in `art/source/review/`; the live game does not load this set.
+`review/` preserves the six direction-approved raster masters plus two new unapproved studies: `twig-creature-v01.png` and `woodland-panel-v01.png`. Explicit live approval metadata is in `visuals/approvedAssets.ts`; the new candidates are isolated in `visuals/validationCandidates.ts`. Provenance and hashes are in `art/source/review/`. Full action coverage, character layer separation and final alpha/crop cleanup remain unfinished.
 
-Follow `docs/art/ART_DIRECTION.md` for new art. The first scene uses `/assets/validation/` exports and `packages/game-client/src/visuals/validationAssets.ts` approval/atlas metadata, with no fixed sprite cell size. Existing temporary assets retain their legacy `art/manifest.ts` contract. Do not copy visual regression PNGs or QA calibration markers into production art.
+Follow `docs/art/ART_DIRECTION.md` and `ASSET_PIPELINE.md` for new art. The first scene combines explicit approval aliases with review-only candidates from these existing URLs; there is no duplicate asset directory or fixed sprite cell size. Existing temporary assets retain their legacy `art/manifest.ts` contract. Do not copy visual regression PNGs or QA calibration markers into production art.
