@@ -1,5 +1,5 @@
 // End-to-end combat through a real Colyseus server and SDK clients (Phase 1B completion).
-import { LEVELING, MAPS } from '@cindervale/content';
+import { DROP_TABLES, LEVELING, LOOT, MAPS } from '@cindervale/content';
 import {
   accounts,
   characters,
@@ -17,13 +17,19 @@ import {
   ServerMessage,
   type AttackRejected,
   type AttackResult,
+  type AutoGrindStatus,
+  type CharacterStats,
   type DropView,
+  type EnhanceResult,
   type ExpGained,
   type Inventory,
   type ItemPickedUp,
+  type ItemRejected,
   type LevelUp,
+  type MonsterKilled,
   type MonsterView,
   type PickupRejected,
+  type SkillRejected,
 } from '@cindervale/protocol';
 import { signToken } from '@cindervale/protocol/token';
 import { Server } from '@colyseus/core';
@@ -139,6 +145,24 @@ const drops = (room: Room) => [...((room.state?.drops as Map<string, DropView>)?
 const attack = (room: Room, requestId: number, skillId = 'basic-attack', facing = 'right') =>
   room.send(ClientMessage.Attack, { requestId, skillId, facing });
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const me = (room: Room) => (room.state?.players as Map<string, { x: number }>)?.get(room.sessionId);
+
+/** Walks with real-time inputs (server-validated movement) until within `range` of x. */
+async function walkTo(room: Room, x: number, range = LOOT.pickupRange.x - 10) {
+  for (let seq = 0; Math.abs(me(room)!.x - x) > range; seq++) {
+    const right = me(room)!.x < x;
+    room.send(ClientMessage.Input, {
+      seq,
+      left: !right,
+      right,
+      up: false,
+      down: false,
+      jump: false,
+    });
+    await delay(1000 / 60);
+    if (seq > 600) throw new Error('walk timed out');
+  }
+}
 
 describe('combat in a map room', () => {
   it('restores earned progression and inventory on reconnect without replaying rewards', async () => {
@@ -262,10 +286,16 @@ describe('combat in a map room', () => {
     const b = await join({ dx: 15 });
     await waitFor(() => monster(a.room, TWIG.id)?.hp === 40, 10_000);
     attack(a.room, 1);
-    await waitFor(() => drops(a.room).length === 4, 10_000); // rng 0.01: every entry drops
+    const table = DROP_TABLES['twig-creature']!;
+    const count = table.items.filter((e) => 0.01 < e.chance).length + 1;
+    await waitFor(() => drops(a.room).length === count, 10_000); // rng 0.01: every entry drops
     expect(drops(a.room).every((d) => d.ownerId === a.characterId)).toBe(true);
 
-    const near = drops(a.room).find((d) => d.itemId === 'twig-bundle')!;
+    const x = me(a.room)!.x;
+    const near = drops(a.room)
+      .filter((d) => d.itemId !== '')
+      .sort((d, e) => Math.abs(d.x - x) - Math.abs(e.x - x))[0]!;
+    expect(Math.abs(near.x - x)).toBeLessThanOrEqual(LOOT.pickupRange.x);
     b.room.send(ClientMessage.Pickup, { dropId: near.dropId });
     await waitFor(() => b.got(ServerMessage.PickupRejected).length === 1);
     expect(b.got<PickupRejected>(ServerMessage.PickupRejected)[0]).toEqual({
@@ -281,24 +311,25 @@ describe('combat in a map room', () => {
     // The second arrives while the first is still being persisted.
     expect(a.got<PickupRejected>(ServerMessage.PickupRejected)[0]!.reason).toBe('invalid_state');
     expect(b.got<ItemPickedUp>(ServerMessage.ItemPickedUp)[0]).toMatchObject({
-      itemId: 'twig-bundle',
+      itemId: near.itemId,
       quantity: 1,
     });
 
     const currency = drops(a.room).find((d) => d.itemId === '')!;
+    await walkTo(a.room, currency.x);
     a.room.send(ClientMessage.Pickup, { dropId: currency.dropId });
     await waitFor(() => a.got<Inventory>(ServerMessage.Inventory).some((i) => i.currency === 3));
     const inv = await conn.db
       .select()
       .from(inventoryItems)
       .where(eq(inventoryItems.characterId, a.characterId));
-    expect(inv).toMatchObject([{ itemId: 'twig-bundle', quantity: 1 }]);
+    expect(inv).toMatchObject([{ itemId: near.itemId, quantity: 1 }]);
     const ledger = await conn.db
       .select()
       .from(grantedRewards)
       .where(eq(grantedRewards.key, `drop:${near.dropId}`));
     expect(ledger).toHaveLength(1);
-  });
+  }, 20_000);
 
   it('rejects invalid and malicious combat commands', async () => {
     const a = await join({ classId: 'runewaver', dx: -15 });
@@ -417,4 +448,191 @@ describe('combat in a map room', () => {
     await waitFor(() => me()?.dead === false);
     expect(me()!.hp).toBe(me()!.maxHp);
   });
+
+  it('learns skills with skill points, applies passives and buffs, and keeps them on rejoin', async () => {
+    const a = await join({ level: 5, dx: -400 });
+    const stats = () => a.got<CharacterStats>(ServerMessage.CharacterStats);
+    await waitFor(() => stats().length === 1);
+    const first = stats()[0]!;
+    expect(first.skillPoints).toBe(12);
+    expect(first.skills).toContainEqual({ skillId: 'rune-burst', level: 1 });
+    expect(first.skills).toContainEqual({ skillId: 'runic-insight', level: 0 });
+
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'runic-insight', level: 1 });
+    await waitFor(() => stats().length === 2);
+    expect(stats()[1]!.skillPoints).toBe(11);
+    expect(stats()[1]!.stats.maxMp).toBe(first.stats.maxMp + 15);
+
+    const rejected = () => a.got<SkillRejected>(ServerMessage.SkillRejected).map((r) => r.reason);
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'runic-insight', level: 1 }); // resent
+    await waitFor(() => rejected().length === 1);
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'flame-cleave', level: 2 });
+    await waitFor(() => rejected().length === 2);
+    expect(rejected()).toEqual(['stale', 'wrong_class']);
+
+    attack(a.room, 1, 'mana-weave'); // not learned yet
+    await waitFor(() => a.got<AttackRejected>(ServerMessage.AttackRejected).length === 1);
+    expect(a.got<AttackRejected>(ServerMessage.AttackRejected)[0]!.reason).toBe('skill_not_owned');
+
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'mana-weave', level: 1 });
+    await waitFor(() => stats().length === 3);
+    attack(a.room, 2, 'mana-weave');
+    await waitFor(() => stats().length === 4);
+    expect(stats()[3]!.buffs).toEqual([
+      { skillId: 'mana-weave', remainingMs: expect.closeTo(120_000, -3) },
+    ]);
+    expect(stats()[3]!.stats.magic).toBe(stats()[2]!.stats.magic + 5);
+
+    await a.room.leave();
+    open.splice(open.indexOf(a.room), 1);
+    await delay(200); // let the leave-save free the character
+    const rejoined = await connect(a.token, a.characterId);
+    open.push(rejoined);
+    const snapshot = await new Promise<CharacterStats>((r) =>
+      rejoined.onMessage(ServerMessage.CharacterStats, r),
+    );
+    expect(snapshot.skills).toContainEqual({ skillId: 'runic-insight', level: 1 });
+    expect(snapshot.skills).toContainEqual({ skillId: 'mana-weave', level: 1 });
+    expect(snapshot.skillPoints).toBe(10);
+    expect(snapshot.buffs).toEqual([]); // buffs end with the session
+  });
+
+  it('equips through the room, recomputing stats, and uses a potion server-side', async () => {
+    const a = await join({ classId: 'ember-knight', level: 5, dx: -400 });
+    const [blade] = await conn.db
+      .insert(inventoryItems)
+      .values([
+        { characterId: a.characterId, slot: 0, itemId: 'ember-brand', quantity: 1 },
+        { characterId: a.characterId, slot: 1, itemId: 'ember-tonic', quantity: 2 },
+      ])
+      .returning();
+    // Rejoin so the seeded vitals and items load.
+    await a.room.leave();
+    open.splice(open.indexOf(a.room), 1);
+    await delay(200);
+    await conn.db
+      .update(characters)
+      .set({ currency: 500, hp: 10 })
+      .where(eq(characters.id, a.characterId));
+    const room = await connect(a.token, a.characterId);
+    open.push(room);
+    const inbox: Record<string, unknown[]> = {};
+    room.onMessage('*', (type, payload) => (inbox[String(type)] ??= []).push(payload));
+    const got = <T>(type: string) => (inbox[type] ?? []) as T[];
+    const stats = () => got<CharacterStats>(ServerMessage.CharacterStats);
+    await waitFor(() => stats().length === 1);
+    const before = stats()[0]!.stats.attack;
+
+    room.send(ClientMessage.Equip, { instanceId: blade!.id });
+    await waitFor(() => stats().length === 2);
+    expect(stats()[1]!.stats.attack).toBe(before + 10);
+    await waitFor(() =>
+      got<Inventory>(ServerMessage.Inventory).some((i) => i.equipped.length === 1),
+    );
+
+    room.send(ClientMessage.Forge, { instanceId: blade!.id, fromAttempts: 0 });
+    await waitFor(() => got<EnhanceResult>(ServerMessage.EnhanceResult).length === 1);
+    expect(got<EnhanceResult>(ServerMessage.EnhanceResult)[0]).toMatchObject({
+      kind: 'forge',
+      success: true, // rng 0.01
+      forgeLevel: 1,
+    });
+    await waitFor(() => stats().length === 3);
+    expect(stats()[2]!.stats.attack).toBe(before + 12);
+
+    const hp = () => (room.state.players as Map<string, { hp: number }>).get(room.sessionId)!.hp;
+    const hpBefore = hp();
+    room.send(ClientMessage.UseItem, { itemId: 'ember-tonic' });
+    room.send(ClientMessage.UseItem, { itemId: 'ember-tonic' }); // inside the use cooldown
+    await waitFor(() => got<ItemRejected>(ServerMessage.ItemRejected).length === 1);
+    expect(got<ItemRejected>(ServerMessage.ItemRejected)[0]!.reason).toMatch(/cooldown|busy/);
+    await waitFor(() => hp() >= hpBefore + 50);
+    const left = await conn.db
+      .select()
+      .from(inventoryItems)
+      .where(eq(inventoryItems.itemId, 'ember-tonic'));
+    expect(left.filter((r) => r.characterId === a.characterId)[0]!.quantity).toBe(1);
+  });
+
+  it('auto-grinds: kills monsters and collects only permitted loot through the normal paths', async () => {
+    const a = await join({ level: 10, dx: -100 });
+    const status = () => a.got<AutoGrindStatus>(ServerMessage.AutoGrind);
+    await waitFor(() => status().length === 1); // sent on join
+    expect(status()[0]!.state).toBe('DISABLED');
+
+    a.room.send(ClientMessage.AutoGrindConfig, {
+      skills: ['basic-attack'],
+      target: 'nearest',
+      hpPotionPct: 0,
+      mpPotionPct: 0,
+      loot: 'currency',
+      bounds: { minX: 300, maxX: 1000 },
+    });
+    await waitFor(() => status().length === 2);
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: true });
+
+    const killed = () => a.got<MonsterKilled>(ServerMessage.MonsterKilled);
+    await waitFor(() => killed().length >= 1, 15_000);
+    await waitFor(
+      () => a.got<Inventory>(ServerMessage.Inventory).some((i) => i.currency > 0),
+      15_000,
+    );
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: false });
+    await waitFor(() => status().at(-1)!.reason === 'disabled');
+
+    // Rewards went through the keyed grants: exactly one EXP ledger entry per kill.
+    const expKeys = async () =>
+      (
+        await conn.db
+          .select()
+          .from(grantedRewards)
+          .where(eq(grantedRewards.characterId, a.characterId))
+      ).filter((r) => r.key.startsWith('exp:')).length;
+    await delay(300); // let in-flight grants commit
+    expect(await expKeys()).toBe(killed().length);
+    // loot: 'currency' never picks up items.
+    const items = await conn.db
+      .select()
+      .from(inventoryItems)
+      .where(eq(inventoryItems.characterId, a.characterId));
+    expect(items).toEqual([]);
+    // Movement stayed inside the configured bounds.
+    expect(me(a.room)!.x).toBeGreaterThanOrEqual(300 - 5);
+    expect(me(a.room)!.x).toBeLessThanOrEqual(1000 + 5);
+    expect(a.got<AutoGrindStatus>(ServerMessage.AutoGrind).map((st) => st.state)).toEqual(
+      expect.arrayContaining(['SEARCHING', 'ATTACKING']),
+    );
+  }, 40_000);
+
+  it('manual input overrides automation, and a disconnect stops it', async () => {
+    const a = await join({ level: 10, dx: -300 });
+    const status = () => a.got<AutoGrindStatus>(ServerMessage.AutoGrind);
+    await waitFor(() => status().length === 1);
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: true });
+    await waitFor(() => status().some((st) => st.state !== 'DISABLED'));
+
+    a.room.send(ClientMessage.Input, {
+      seq: 0,
+      left: true,
+      right: false,
+      up: false,
+      down: false,
+      jump: false,
+    });
+    await waitFor(() => status().at(-1)!.state === 'PAUSED');
+    expect(status().at(-1)!.reason).toBe('manual_input');
+
+    const client = new Client(`ws://localhost:${PORT}`);
+    const token = a.room.reconnectionToken;
+    a.room.reconnection.enabled = false;
+    open.splice(open.indexOf(a.room), 1); // closed below; cleanup leaves the rejoined room
+    a.room.connection.close(3000); // network drop
+    await delay(200);
+    const rejoined = await client.reconnect(token);
+    open.push(rejoined);
+    const after = await new Promise<AutoGrindStatus>((r) =>
+      rejoined.onMessage(ServerMessage.AutoGrind, r),
+    );
+    expect(after).toMatchObject({ state: 'DISABLED', reason: 'disconnected' });
+  }, 20_000);
 });

@@ -1,6 +1,8 @@
-import { CLASS_STATS } from '@cindervale/content';
-import { statsForLevel, type Body, type Stats } from '@cindervale/game-core';
-import type { InputMessage } from '@cindervale/protocol';
+import type { Body, Stats } from '@cindervale/game-core';
+import type { AutoGrindConfig, InputMessage } from '@cindervale/protocol';
+import { DEFAULT_AUTO_CONFIG, disabledAuto, type AutoGrind } from './autogrind';
+import { equipmentBonuses, type EquipInstance } from './equipment';
+import { computeStats } from './progression';
 
 /** Everything the server knows about one connected player. Never trusted from the client. */
 export interface Session {
@@ -18,7 +20,18 @@ export interface Session {
   // Progression
   level: number;
   exp: number;
+  /** Learned skill levels, mirrored from the database. */
+  skills: Map<string, number>;
+  buffs: Map<string, { level: number; until: number }>;
+  /** Worn equipment, mirrored from the database. */
+  equipment: EquipInstance[];
+  /** Class, level, passives and buffs combined; recompute with refreshStats. */
   stats: Stats;
+  /** One skill-learn transaction at a time per player. */
+  learnPending: boolean;
+  /** One item transaction (equip, forge, imprint, use) at a time per player. */
+  itemPending: boolean;
+  nextItemUseAt: number;
   // Combat
   hp: number;
   mp: number;
@@ -29,10 +42,23 @@ export interface Session {
   cooldowns: Map<string, number>;
   /** One pickup transaction at a time per player. */
   pickupPending: boolean;
+  // Automation
+  auto: AutoGrind;
+  /** Consumables held (item id → count), refreshed with every inventory snapshot. */
+  potions: Map<string, number>;
+  /** Request ids for automated attacks, kept apart from client ids (which start at 0). */
+  autoRequestId: number;
+  /** Last automation status sent to the owner, to send only changes. */
+  autoSent: string;
+  autoConfigPending: boolean;
 }
 
-export const statsFor = (classId: string, level: number) =>
-  statsForLevel(CLASS_STATS[classId] ?? CLASS_STATS['ember-knight']!, level);
+/** Recomputes stats after a level, skill or buff change; vitals are capped, not healed. */
+export function refreshStats(s: Session) {
+  s.stats = computeStats(s.classId, s.level, s.skills, s.buffs, equipmentBonuses(s.equipment));
+  s.hp = Math.min(s.hp, s.stats.maxHp);
+  s.mp = Math.min(s.mp, s.stats.maxMp);
+}
 
 export function createSession(
   sessionId: string,
@@ -45,10 +71,15 @@ export function createSession(
     exp: number;
     hp?: number | null;
     mp?: number | null;
+    skills?: ReadonlyMap<string, number>;
+    equipment?: readonly EquipInstance[];
+    autoConfig?: AutoGrindConfig;
   },
   now = 0,
 ): Session {
-  const stats = statsFor(c.classId, c.level);
+  const skills = new Map(c.skills);
+  const equipment = [...(c.equipment ?? [])];
+  const stats = computeStats(c.classId, c.level, skills, new Map(), equipmentBonuses(equipment));
   // Vitals carry over from the last session (null = never saved = full), so leaving and
   // rejoining can't heal; a character that left dead comes back dead.
   const hp = Math.min(c.hp ?? stats.maxHp, stats.maxHp);
@@ -65,7 +96,13 @@ export function createSession(
     facing: 1,
     level: c.level,
     exp: c.exp,
+    skills,
+    buffs: new Map(),
+    equipment,
     stats,
+    learnPending: false,
+    itemPending: false,
+    nextItemUseAt: 0,
     hp,
     mp,
     dead: hp <= 0,
@@ -74,7 +111,24 @@ export function createSession(
     nextAttackAt: 0,
     cooldowns: new Map(),
     pickupPending: false,
+    auto: disabledAuto(c.autoConfig ?? DEFAULT_AUTO_CONFIG),
+    potions: new Map(),
+    autoRequestId: 2 ** 30,
+    autoSent: '',
+    autoConfigPending: false,
   };
+}
+
+/** Drops buffs that ended by `now`; true if any did (stats are then recomputed). */
+export function expireBuffs(s: Session, now: number) {
+  let expired = false;
+  for (const [id, b] of s.buffs) {
+    if (now < b.until) continue;
+    s.buffs.delete(id);
+    expired = true;
+  }
+  if (expired) refreshStats(s);
+  return expired;
 }
 
 /** Applies a persisted level/EXP; a level-up recomputes stats and heals fully. */
@@ -85,7 +139,7 @@ export function applyProgress(s: Session, level: number, exp: number) {
   s.level = level;
   s.exp = exp;
   if (leveled) {
-    s.stats = statsFor(s.classId, level);
+    refreshStats(s);
     if (!s.dead) {
       s.hp = s.stats.maxHp;
       s.mp = s.stats.maxMp;

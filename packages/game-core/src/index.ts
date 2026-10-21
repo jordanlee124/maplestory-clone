@@ -150,5 +150,5 @@ export function stepBody(body: Body, input: MoveInput, map: MapGeometry): Body {
 }
 
 export * from './combat';
-export type * from './rules';
+export * from './rules';
 export * from './monster-ai';

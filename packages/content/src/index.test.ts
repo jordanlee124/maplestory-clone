@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   BASIC_ATTACK_ID,
   CLASS_IDS,
-  CLASS_STATS,
+  ADVANCEMENT_LEVELS,
+  CLASS_SCALING,
   CLASSES,
   DROP_TABLES,
+  EQUIP_SLOTS,
+  EQUIPMENT,
+  FORGE,
+  IMPRINTS,
+  SETS,
   ITEMS,
   MAPS,
   MONSTERS,
@@ -68,7 +74,62 @@ describe('content', () => {
     for (const skill of Object.values(SKILLS)) {
       expect(skill.classId === null || skill.classId in CLASSES).toBe(true);
     }
-    for (const id of CLASS_IDS) expect(CLASS_STATS[id]).toBeDefined();
+    for (const id of CLASS_IDS) expect(CLASS_SCALING[id]).toBeDefined();
     expect(SKILLS[BASIC_ATTACK_ID]?.classId).toBeNull();
+  });
+});
+
+describe('skills', () => {
+  const skills = Object.values(SKILLS);
+
+  it('give every class an innate attack, a passive, a buff and a learnable attack', () => {
+    for (const id of CLASS_IDS) {
+      const own = skills.filter((s) => s.classId === id);
+      expect(own.some((s) => s.kind === 'attack' && s.innate)).toBe(true);
+      expect(own.some((s) => s.kind === 'attack' && !s.innate)).toBe(true);
+      expect(own.some((s) => s.kind === 'passive')).toBe(true);
+      expect(own.some((s) => s.kind === 'buff')).toBe(true);
+    }
+  });
+
+  it('have consistent unlock requirements', () => {
+    for (const s of skills) {
+      expect(s.id in SKILLS && SKILLS[s.id] === s).toBe(true);
+      expect(s.maxLevel).toBeGreaterThanOrEqual(1);
+      if (s.stage > 0)
+        expect(s.requiredLevel).toBeGreaterThanOrEqual(ADVANCEMENT_LEVELS[s.stage - 1]!);
+      if (s.requires) {
+        const pre = SKILLS[s.requires.skillId];
+        expect(pre?.classId).toBe(s.classId);
+        expect(s.requires.level).toBeLessThanOrEqual(pre!.maxLevel);
+      }
+    }
+  });
+});
+
+describe('equipment', () => {
+  it('every equip item has equipment data and vice versa', () => {
+    for (const item of Object.values(ITEMS)) {
+      expect(item.kind === 'equip').toBe(item.id in EQUIPMENT);
+    }
+    for (const [id, e] of Object.entries(EQUIPMENT)) {
+      expect(e.itemId).toBe(id);
+      expect(EQUIP_SLOTS).toContain(e.slot);
+      if (e.setId) expect(SETS[e.setId]).toBeDefined();
+      for (const c of e.classes ?? []) expect(CLASS_IDS).toContain(c);
+    }
+  });
+
+  it('every slot has at least one item', () => {
+    const slots = new Set(Object.values(EQUIPMENT).map((e) => e.slot));
+    for (const slot of EQUIP_SLOTS) expect(slots.has(slot)).toBe(true);
+  });
+
+  it('has sane enhancement tables', () => {
+    for (const l of FORGE.levels) expect(l.successRate).toBeGreaterThan(0);
+    for (const t of IMPRINTS.tiers) {
+      expect(t.lines).toBeGreaterThan(0);
+      expect(t.pool.length).toBeGreaterThanOrEqual(t.lines);
+    }
   });
 });

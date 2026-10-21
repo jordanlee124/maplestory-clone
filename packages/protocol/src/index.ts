@@ -1,6 +1,6 @@
 // Typed, validated, versioned contracts between web client, API, and game server.
 // See docs/protocols/NETWORK_PROTOCOL.md. Bump PROTOCOL_VERSION on any breaking change.
-import { CLASS_IDS } from '@cindervale/content';
+import { CLASS_IDS, EQUIP_SLOTS, type Stats } from '@cindervale/content';
 import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 3;
@@ -48,6 +48,14 @@ export const ClientMessage = {
   Attack: 'attack',
   Pickup: 'pickup',
   Respawn: 'respawn',
+  LearnSkill: 'learnSkill',
+  Equip: 'equip',
+  Unequip: 'unequip',
+  Forge: 'forge',
+  Imprint: 'imprint',
+  UseItem: 'useItem',
+  AutoGrindConfig: 'autoGrindConfig',
+  AutoGrindToggle: 'autoGrindToggle',
 } as const;
 
 /** One fixed simulation step of input. `seq` increases by 1 per step. */
@@ -109,6 +117,79 @@ export type PickupRequest = z.infer<typeof PickupRequest>;
 /** Respawn after death; no payload. */
 export const RespawnRequest = z.object({}).strict();
 
+/**
+ * Spend one skill point raising `skillId` to `level` (its current level + 1). Naming the target
+ * level makes a resent request a no-op instead of a second level.
+ */
+export const LearnSkillRequest = z.object({
+  skillId: z.string().min(1).max(64),
+  level: z.number().int().min(1).max(100),
+});
+export type LearnSkillRequest = z.infer<typeof LearnSkillRequest>;
+
+// ---- Items and equipment ----
+
+/** Wear a bag item; whatever is in its slot swaps into the freed bag slot. */
+export const EquipRequest = z.object({ instanceId: z.uuid() });
+export type EquipRequest = z.infer<typeof EquipRequest>;
+
+/** Move a worn item to the first free bag slot. */
+export const UnequipRequest = z.object({ slot: z.enum(EQUIP_SLOTS) });
+export type UnequipRequest = z.infer<typeof UnequipRequest>;
+
+/**
+ * Forge Ascension attempt. `fromAttempts` is the item's current forge attempt count (failed
+ * attempts can keep the level), so a resent request is rejected as 'stale' instead of paying
+ * twice.
+ */
+export const ForgeRequest = z.object({ instanceId: z.uuid(), fromAttempts: int32 });
+export type ForgeRequest = z.infer<typeof ForgeRequest>;
+
+/** Arcane Imprint reroll. `fromRolls` is the item's current reroll count (same idea). */
+export const ImprintRequest = z.object({ instanceId: z.uuid(), fromRolls: int32 });
+export type ImprintRequest = z.infer<typeof ImprintRequest>;
+
+/** Use one consumable (lowest bag slot holding it). */
+export const UseItemRequest = z.object({ itemId: z.string().min(1).max(64) });
+export type UseItemRequest = z.infer<typeof UseItemRequest>;
+
+// ---- Auto-grinding ----
+
+const pct = z.number().int().min(0).max(100);
+
+/** Saved per character. The server re-validates skills against the class and clamps bounds. */
+export const AutoGrindConfig = z
+  .object({
+    /** Allowed skills in priority order (attack and buff skills). Empty = basic attack only. */
+    skills: z.array(z.string().min(1).max(64)).max(8),
+    target: z.enum(['nearest', 'lowest_hp', 'highest_level']),
+    /** Use an HP / MP potion below this percentage; 0 = never. */
+    hpPotionPct: pct,
+    mpPotionPct: pct,
+    loot: z.enum(['all', 'currency', 'items', 'none']),
+    /** Horizontal area to grind in; null = the whole map. */
+    bounds: z
+      .object({ minX: z.number().finite(), maxX: z.number().finite() })
+      .refine((b) => b.minX < b.maxX, 'minX must be below maxX')
+      .nullable(),
+  })
+  .strict();
+export type AutoGrindConfig = z.infer<typeof AutoGrindConfig>;
+
+export const AutoGrindToggle = z.object({ enabled: z.boolean() }).strict();
+export type AutoGrindToggle = z.infer<typeof AutoGrindToggle>;
+
+export const AUTO_GRIND_STATES = [
+  'DISABLED',
+  'SEARCHING',
+  'MOVING',
+  'ATTACKING',
+  'LOOTING',
+  'RECOVERING',
+  'PAUSED',
+] as const;
+export type AutoGrindState = (typeof AUTO_GRIND_STATES)[number];
+
 export const ServerMessage = {
   AttackResult: 'attackResult',
   AttackRejected: 'attackRejected',
@@ -122,6 +203,11 @@ export const ServerMessage = {
   ExpGained: 'expGained',
   LevelUp: 'levelUp',
   Inventory: 'inventory',
+  CharacterStats: 'characterStats',
+  SkillRejected: 'skillRejected',
+  ItemRejected: 'itemRejected',
+  EnhanceResult: 'enhanceResult',
+  AutoGrind: 'autoGrind',
 } as const;
 
 export type AttackRejectReason =
@@ -130,7 +216,21 @@ export type AttackRejectReason =
   | 'invalid_state'
   | 'too_fast'
   | 'cooldown'
-  | 'insufficient_mp';
+  | 'insufficient_mp'
+  /** Passive skills can't be used. */
+  | 'not_usable';
+
+export type SkillRejectReason =
+  | 'unknown_skill'
+  | 'wrong_class'
+  | 'level_too_low'
+  | 'prerequisite'
+  | 'max_level'
+  | 'no_skill_points'
+  /** `level` isn't current + 1 (usually a resent request). */
+  | 'stale'
+  | 'busy'
+  | 'error';
 
 export type PickupRejectReason =
   'not_found' | 'invalid_state' | 'out_of_range' | 'not_owner' | 'inventory_full' | 'error';
@@ -192,11 +292,97 @@ export interface LevelUp {
   sessionId: string;
   level: number;
 }
+export interface StatLineView {
+  stat: keyof Stats;
+  value: number;
+}
+/** A stack, or one equipment instance (quantity 1, `id` = instance id). */
+export interface ItemView {
+  id: string;
+  itemId: string;
+  quantity: number;
+  /** Bonus stats rolled at creation. */
+  bonus: StatLineView[];
+  forgeLevel: number;
+  forgeAttempts: number;
+  imprintTier: number;
+  imprints: StatLineView[];
+  imprintRolls: number;
+}
 /** To the owner only: sent on join and after every change. */
 export interface Inventory {
   currency: number;
   capacity: number;
-  items: { slot: number; itemId: string; quantity: number }[];
+  items: (ItemView & { slot: number })[];
+  equipped: (ItemView & { equipSlot: (typeof EQUIP_SLOTS)[number] })[];
+}
+
+export type ItemAction = 'equip' | 'unequip' | 'forge' | 'imprint' | 'useItem';
+export type ItemRejectReason =
+  | 'not_found'
+  | 'not_equipment'
+  | 'not_usable'
+  | 'wrong_class'
+  | 'level_too_low'
+  | 'inventory_full'
+  | 'max_level'
+  | 'insufficient_currency'
+  /** `fromAttempts`/`fromRolls` doesn't match (usually a resent request). */
+  | 'stale'
+  | 'cooldown'
+  | 'invalid_state'
+  | 'busy'
+  | 'error';
+/** To the requester only. Nothing changed. */
+export interface ItemRejected {
+  action: ItemAction;
+  reason: ItemRejectReason;
+}
+/** To the requester: a paid forge/imprint attempt's outcome (an `inventory` follows). */
+export interface EnhanceResult {
+  kind: 'forge' | 'imprint';
+  instanceId: string;
+  success: boolean;
+  cost: number;
+  forgeLevel: number;
+  forgeAttempts: number;
+  imprintTier: number;
+  imprints: StatLineView[];
+}
+
+/**
+ * To the owner only: sent on join/reconnect and whenever stats, skills or buffs change.
+ * `skills` lists effective levels (innate skills report at least 1).
+ */
+export interface CharacterStats {
+  stats: Stats;
+  skillPoints: number;
+  skills: { skillId: string; level: number }[];
+  buffs: { skillId: string; remainingMs: number }[];
+}
+/** To the requester only. */
+export interface SkillRejected {
+  skillId: string;
+  reason: SkillRejectReason;
+}
+
+/**
+ * To the owner: on join, on every state change and after a config save. `reason` says why
+ * automation stopped or was refused.
+ */
+export interface AutoGrindStatus {
+  state: AutoGrindState;
+  config: AutoGrindConfig;
+  reason?:
+    | 'disabled'
+    | 'manual_input'
+    | 'died'
+    | 'time_limit'
+    | 'boss_instance'
+    | 'disconnected'
+    | 'invalid_config'
+    | 'busy'
+    | 'error';
 }
 
 /** Synced monster state (MapState.monsters, keyed by monster id). */

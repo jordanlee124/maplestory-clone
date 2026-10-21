@@ -22,6 +22,34 @@
       "when": 1792471462294,
       "tag": "0002_saved_vitals",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792545375174,
+      "tag": "0003_character_skills",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792546143644,
+      "tag": "0004_equipment",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792546752309,
+      "tag": "0005_auto_grind",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792548194648,
+      "tag": "0006_forge_attempts",
+      "breakpoints": true
     }
   ]
 }
