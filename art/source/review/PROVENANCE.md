@@ -29,3 +29,7 @@ The subsequent Phase 1.5 implementation request explicitly adds one Twig Creatur
 | `woodland-panel-v01.png` | `exec-2d56edd3-af74-4a67-8ccf-8efaa566db4c` | Original 2172x724 RGBA bark/honey-brass/teal panel skin with dewdrop gem and restrained fern ornament. No generated text or bars; the scene adds legible sample HP/MP/EXP values separately. Requires native-scale approval and production border/icon/font work before live UI integration.                                                                                                                                                             |
 
 Project use of these original AI-assisted outputs is requested by the owner; no third-party source assets were used. Generation does not constitute visual approval or a guarantee of professional production readiness. Review the new silhouettes, pose pivots, alpha fringes, panel density and legibility before promotion or new asset-family expansion.
+
+## Owner approval and live promotion ? 2026-10-21
+
+The owner explicitly stated ?i approve designs? after reviewing the expanded scene. Twig Creature and woodland panel are approved original designs for live Fernreach integration. Source candidate metadata and PNG hashes remain unchanged as history; the explicit runtime whitelist now promotes all eight designs. The HUD uses actual character values, while the validation board retains clearly labeled sample values. Approval does not supply missing in-betweens, layered source, respawn drawings, icons or fonts. Other maps retain legacy art.

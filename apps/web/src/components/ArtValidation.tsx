@@ -31,9 +31,9 @@ export default function ArtValidation() {
       <h1 className="p-3 text-xl">Cindervale art direction · validation scene</h1>
       <p className="px-3 pb-3">
         Visual direction approved. Live Fernreach now uses this original AI-assisted design. The
-        Twig Creature pose sheet and woodland HUD panel below are new candidates awaiting review.
-        HUD values are samples, with no connection to gameplay. Full motion sets and separate
-        character layers remain unfinished. Pause before selecting a pose to inspect it.
+        Twig Creature pose sheet and woodland HUD panel below are approved for live Fernreach. HUD
+        values are samples, with no connection to gameplay. Full motion sets and separate character
+        layers remain unfinished. Pause before selecting a pose to inspect it.
       </p>
       <p className="px-3 pb-3">
         <a className="underline" href="#comparison">

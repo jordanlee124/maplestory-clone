@@ -238,7 +238,10 @@ export class WorldScene extends Phaser.Scene {
               hit.damage,
               hit.crit,
               false,
-              this.registry.get('approvedArt') && monster.monsterId === 'fern-frog' ? 72 : 40,
+              this.registry.get('approvedArt') &&
+                (monster.monsterId === 'fern-frog' || monster.monsterId === 'twig-creature')
+                ? 74
+                : 40,
             );
             this.monsters.hit(hit.monsterId);
           }
@@ -307,6 +310,7 @@ export class WorldScene extends Phaser.Scene {
   /** Read-only browser test diagnostics. */
   combatSnapshot() {
     return {
+      hud: this.hud.snapshot(),
       appearance: {
         style: this.registry.get('approvedArt') ? 'approved-fernreach' : 'legacy',
         playerTexture: this.me.avatar.sprite.texture.key,

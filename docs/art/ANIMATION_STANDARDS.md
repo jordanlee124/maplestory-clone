@@ -21,7 +21,7 @@ Player actions: idle, walk, jump, fall, basic attack, skill, hit, death and clim
 | ------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Approved adventurer | Idle/blink, windup, contact, cast; one flattened outfit                   | Clean body, face/eyes, hair, outfit, weapon and accessory exports; walk/jump/fall/climb/hurt/death and polished in-betweens |
 | Approved Fern Frog  | One clean idle crop; confirmed cosmetic recoil/flash/fade                 | Idle cycle, hop, windup/strike, hurt, defeat and respawn drawings                                                           |
-| Twig candidate      | Six isolated poses; two-pose walk and short attack/hit study; defeat hold | Silhouette/scale/motion approval, alpha cleanup and complete in-betweens; authored respawn                                  |
+| Approved Twig       | Six isolated poses; two-pose walk and short attack/hit study; defeat hold | Alpha cleanup and complete in-betweens; authored respawn                                                                    |
 | Crystal Beetle      | Legacy procedural placeholders                                            | Original rounded mineral-shell design and complete action set                                                               |
 | Cinder-petal effect | Six soft-alpha stages, finite playback                                    | Edge cleanup, separate arc/contact/secondary layers, new class-specific effects                                             |
 

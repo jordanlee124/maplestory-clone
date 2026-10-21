@@ -3,7 +3,7 @@ import type { MonsterView } from '@cindervale/protocol';
 import type Phaser from 'phaser';
 import type { CombatEffects } from '../combat/effects';
 import { FEET_ORIGIN } from '../art/manifest';
-import { liveVisual, FROG_VISUAL_SCALE } from '../visuals/approvedAssets';
+import { liveVisual, FROG_VISUAL_SCALE, TWIG_VISUAL_SCALE } from '../visuals/approvedAssets';
 import { MonsterAnimation } from '../visuals/monsterAnimation';
 
 interface RenderedMonster {
@@ -30,8 +30,12 @@ export class Monsters {
     for (const [id, m] of monsters) {
       const def = MONSTERS[m.monsterId];
       if (!def) continue;
-      const painted = this.scene.registry.get('approvedArt') && m.monsterId === 'fern-frog';
-      const art = painted ? liveVisual('fern-frog') : undefined;
+      const painted =
+        this.scene.registry.get('approvedArt') &&
+        (m.monsterId === 'fern-frog' || m.monsterId === 'twig-creature');
+      const art = painted ? liveVisual(m.monsterId) : undefined;
+      const twig = m.monsterId === 'twig-creature';
+      const defeatMs = painted && twig ? 600 : 280;
       let entry = this.entries.get(id);
       if (!entry) {
         entry = {
@@ -66,17 +70,17 @@ export class Monsters {
           entry.sprite
             .setTexture(art.key, f.name)
             .setOrigin(f.pivot.x / f.width, f.pivot.y / f.height)
-            .setScale(FROG_VISUAL_SCALE);
+            .setScale(twig ? TWIG_VISUAL_SCALE : FROG_VISUAL_SCALE);
         }
       }
       const dead = m.mode === 'dead';
-      if (dead && !entry.dead) entry.defeatUntil = now + 280;
+      if (dead && !entry.dead) entry.defeatUntil = now + defeatMs;
       if (!dead && entry.dead) this.effects.burst(m.x, m.y, 0xa9edce);
       entry.dead = dead;
       const recoil = now < entry.hitUntil ? -m.facing * Math.round((entry.hitUntil - now) / 40) : 0;
       entry.sprite
         .setPosition(Math.round(m.x) + recoil, Math.round(m.y))
-        .setFlipX(painted ? m.facing > 0 : m.facing < 0);
+        .setFlipX(painted && !twig ? m.facing > 0 : m.facing < 0);
       if (art) {
         // shortcut: missing frog action clips hold idle until the authored drawings are supplied.
         const { frame: f } = entry.animation.sample(art, m.mode, now, entry);
@@ -96,10 +100,10 @@ export class Monsters {
       if (!art) entry.sprite.setFrame(frame);
       entry.sprite
         .setVisible(!dead || now < entry.defeatUntil)
-        .setAlpha(dead && painted ? Math.max(0, (entry.defeatUntil - now) / 280) : 1);
+        .setAlpha(dead && painted ? Math.max(0, (entry.defeatUntil - now) / defeatMs) : 1);
       if (now < entry.hitUntil) entry.sprite.setTintFill(0xffeeee);
       else entry.sprite.clearTint();
-      const visualHeight = painted ? 62 : def.size.height;
+      const visualHeight = painted ? (twig ? 64 : 62) : def.size.height;
       entry.track.setPosition(m.x, m.y - visualHeight - 8).setVisible(!dead);
       entry.hp
         .setPosition(m.x - 19, m.y - visualHeight - 8)

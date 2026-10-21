@@ -17,14 +17,13 @@ export function renderFernreachArt(scene: Phaser.Scene, map: MapDef) {
     .setDisplaySize(backdropWidth, backdropHeight)
     .setScrollFactor(0.12, 1)
     .setAlpha(0.86);
-  for (let x = -128; x < width * 0.65 + 1280; x += 1280) {
-    scene.add
-      .image(x, height - 792, front.key, 'still')
-      .setOrigin(0)
-      .setDisplaySize(1408, 792)
-      .setScrollFactor(0.65, 1)
-      .setDepth(6);
-  }
+  // shortcut: this non-seamless plate frames the screen until separate foreground props are authored.
+  scene.add
+    .image(-64, height - 792, front.key, 'still')
+    .setOrigin(0)
+    .setDisplaySize(1408, 792)
+    .setScrollFactor(0, 1)
+    .setDepth(6);
   const texture = scene.textures.get(terrain.key);
   // shortcut: reuse reviewed plate crops; replace with authored seamless caps/fills after cleanup.
   if (!texture.has('left-cap')) {

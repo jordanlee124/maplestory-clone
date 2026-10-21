@@ -8,8 +8,8 @@ import {
 import { REVIEW_ASSETS } from './reviewAssets';
 import { validateVisual } from './model';
 
-it('promotes only the six explicitly reviewed assets with provenance and separate live keys', () => {
-  expect(APPROVED_DIRECTION_ASSETS).toHaveLength(6);
+it('promotes only the eight explicitly reviewed assets with provenance and separate live keys', () => {
+  expect(APPROVED_DIRECTION_ASSETS).toHaveLength(8);
   for (const asset of LIVE_VISUAL_ASSETS) {
     expect(() => validateVisual(asset)).not.toThrow();
     expect(asset.key).toMatch(/^approved-/);
@@ -18,6 +18,8 @@ it('promotes only the six explicitly reviewed assets with provenance and separat
   }
   expect(REVIEW_ASSETS.every((a) => a.candidate && !a.approval)).toBe(true);
   expect(liveVisual('adventurer-body').key).toBe('approved-adventurer-body');
+  expect(liveVisual('twig-creature').clips.defeat?.frames).toEqual(['defeat']);
+  expect(liveVisual('ui-panel').key).toBe('approved-ui-panel');
   expect(liveVisual('adventurer-body').clips.skill?.durations).toEqual([90, 100, 160]);
   expect(() => liveVisual('not-approved')).toThrow();
 });

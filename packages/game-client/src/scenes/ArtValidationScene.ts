@@ -8,7 +8,7 @@ import { VALIDATION_CANDIDATES, REVIEW_TWIG_SCALE } from '../visuals/validationC
 const SCENE_ASSETS = [
   ...VALIDATION_ASSETS,
   ...REVIEW_ASSETS.filter((a) => !VALIDATION_ASSETS.some((b) => b.key === a.key)),
-  ...VALIDATION_CANDIDATES,
+  ...VALIDATION_CANDIDATES.filter((a) => !VALIDATION_ASSETS.some((b) => b.key === a.key)),
 ];
 import {
   addAmbientParticles,

@@ -6,7 +6,7 @@ const candidate = {
     'Original image_gen output; art/source/review/PROVENANCE.md. New review candidate, not approved for live use.',
 };
 
-/** Kept outside the approved registry: adding a review image never approves it for gameplay. */
+/** Source review history; live promotion is explicit in approvedAssets, never inferred here. */
 export const VALIDATION_CANDIDATES: readonly VisualAsset[] = [
   {
     key: 'twig-creature',

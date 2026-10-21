@@ -34,8 +34,8 @@ test('validation scene contains player, frog, Twig study and preview HUD with ex
       ).cindervaleValidation(),
     );
   expect(await state()).toMatchObject({ slotsOnly: false, zoom: 1 });
-  expect((await state()).approved).toHaveLength(6);
-  expect((await state()).candidates).toEqual(['twig-creature', 'ui-panel']);
+  expect((await state()).approved).toHaveLength(8);
+  expect((await state()).candidates).toEqual([]);
   expect((await state()).missing).toHaveLength(10);
   expect((await state()).actor).toHaveLength(1);
   expect((await state()).frog).toHaveLength(1);

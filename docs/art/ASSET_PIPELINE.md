@@ -7,8 +7,8 @@ The production direction is [ART_DIRECTION.md](ART_DIRECTION.md). Keep the exist
 | `art/source/review/`                               | Generation history, selected-raster hashes and review status. Native layered authoring files should live under `art/source/` when supplied. |
 | `apps/web/public/assets/review/`                   | Versioned original PNG studies; public URLs do not imply approval.                                                                          |
 | `packages/game-client/src/visuals/reviewAssets.ts` | Original six-study source descriptors.                                                                                                      |
-| `visuals/validationCandidates.ts`                  | New Twig/HUD studies, isolated from live approval.                                                                                          |
-| `visuals/approvedAssets.ts`                        | Explicit six-key approval whitelist and namespaced live descriptors.                                                                        |
+| `visuals/validationCandidates.ts`                  | Twig/HUD source review history; explicit promotion lives in approvedAssets.                                                                 |
+| `visuals/approvedAssets.ts`                        | Explicit eight-key approval whitelist and namespaced live descriptors.                                                                      |
 | `visuals/model.ts`, `renderer.ts`                  | Typed atlas metadata, validation, loading, frame sampling, layers and finite effects.                                                       |
 | `art/manifest.ts`, `pipeline.ts`                   | Legacy placeholder contract; preserved for unfinished content and regression baselines.                                                     |
 
@@ -18,12 +18,12 @@ The production direction is [ART_DIRECTION.md](ART_DIRECTION.md). Keep the exist
 2. Export RGBA PNGs, retaining transparent margins needed for moving weapons/hair. Verify actual alpha, source dimensions and every frame boundary. A packed sheet is described directly by frame rectangles in the existing TypeScript manifest; no new atlas parser or universal cell size is needed. External JSON exports must be translated and reviewed against this contract before import.
 3. Record the source/generation ID, brief, usage provenance and SHA-256 in `art/source/review/`. Generated raster studies are not layered authoring sources or finished animation.
 4. Supply `VisualAsset`: stable key, versioned URL, actual sheet size, per-texture filter, named rectangles, per-frame pixel pivots/anchors, named clips with unequal millisecond durations, and either candidate or explicit approval metadata. Validation rejects missing provenance, invalid rectangles, path traversal and invalid clips.
-5. Add new candidates only to the review registry. Inspect `/art-validation` with guides, facing, paused poses, zoom and parallax. Approval of the existing six textures does not approve subsequent assets. Promote selected designs explicitly after review; retain candidate history.
+5. Add new candidates only to the review registry. Inspect `/art-validation` with guides, facing, paused poses, zoom and parallax. Approval of the existing eight textures does not approve subsequent assets. Promote selected designs explicitly after review; retain candidate history.
 6. Integrate approved descriptors through map-scoped `PreloadScene` loading. Live keys use `approved-` to avoid collisions with legacy atlas keys. Preserve shared collision geometry and command/event authority.
 
 ## Loading, fallbacks and texture lifetime
 
-`queueVisuals` takes the selected asset list, validates approval, rejects duplicate keys and skips textures already present in the same Phaser game. Fernreach loads its six approved PNGs on entry; other maps do not fetch them. The web dynamically imports Phaser when the relevant view opens. Do not prefetch every map/equipment family at login.
+`queueVisuals` takes the selected asset list, validates approval, rejects duplicate keys and skips textures already present in the same Phaser game. Fernreach loads its eight approved PNGs on entry; other maps do not fetch them. The web dynamically imports Phaser when the relevant view opens. Do not prefetch every map/equipment family at login.
 
 `registerVisuals` checks real PNG dimensions, registers trimmed rectangles and selects each texture's sampling mode. Mandatory live imports fail visibly through `world-load-error`, clean up the game/room and never silently substitute primitive artwork. The isolated review scene explicitly allows failed PNGs to become labeled missing slots; its unavailable pose control is disabled. Existing legacy art remains a clearly disclosed fallback for unfinished species/maps, not a replacement for a broken approved file.
 
