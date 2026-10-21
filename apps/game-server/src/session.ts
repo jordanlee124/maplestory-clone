@@ -1,5 +1,6 @@
 import type { Body, Stats } from '@cindervale/game-core';
-import type { InputMessage } from '@cindervale/protocol';
+import type { AutoGrindConfig, InputMessage } from '@cindervale/protocol';
+import { DEFAULT_AUTO_CONFIG, disabledAuto, type AutoGrind } from './autogrind';
 import { equipmentBonuses, type EquipInstance } from './equipment';
 import { computeStats } from './progression';
 
@@ -41,6 +42,14 @@ export interface Session {
   cooldowns: Map<string, number>;
   /** One pickup transaction at a time per player. */
   pickupPending: boolean;
+  // Automation
+  auto: AutoGrind;
+  /** Consumables held (item id → count), refreshed with every inventory snapshot. */
+  potions: Map<string, number>;
+  /** Request ids for automated attacks, kept apart from client ids (which start at 0). */
+  autoRequestId: number;
+  /** Last automation status sent to the owner, to send only changes. */
+  autoSent: string;
 }
 
 /** Recomputes stats after a level, skill or buff change; vitals are capped, not healed. */
@@ -63,6 +72,7 @@ export function createSession(
     mp?: number | null;
     skills?: ReadonlyMap<string, number>;
     equipment?: readonly EquipInstance[];
+    autoConfig?: AutoGrindConfig;
   },
   now = 0,
 ): Session {
@@ -100,6 +110,10 @@ export function createSession(
     nextAttackAt: 0,
     cooldowns: new Map(),
     pickupPending: false,
+    auto: disabledAuto(c.autoConfig ?? DEFAULT_AUTO_CONFIG),
+    potions: new Map(),
+    autoRequestId: 2 ** 30,
+    autoSent: '',
   };
 }
 

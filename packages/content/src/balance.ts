@@ -437,6 +437,18 @@ export interface ItemDef {
   use?: { hp?: number; mp?: number };
 }
 
+/** Auto-grinding safety limits. */
+export const AUTO_GRIND = {
+  /** Automation switches itself off after running this long. */
+  maxRunMs: 2 * 60 * 60_000,
+  /** Manual input pauses automation; it resumes after this long without any. */
+  manualOverrideMs: 3000,
+  /** Pick a new target if the current one isn't hit within this long. */
+  targetTimeoutMs: 8000,
+  /** Most skills a priority list may hold. */
+  maxSkills: 8,
+} as const;
+
 /** Minimum gap between two item uses. */
 export const ITEM_USE_COOLDOWN_MS = 500;
 

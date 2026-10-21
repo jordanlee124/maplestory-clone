@@ -42,9 +42,7 @@
         "accounts_username_unique": {
           "name": "accounts_username_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "username"
-          ]
+          "columns": ["username"]
         }
       },
       "policies": {},
@@ -80,12 +78,8 @@
           "name": "character_skills_character_id_characters_id_fk",
           "tableFrom": "character_skills",
           "tableTo": "characters",
-          "columnsFrom": [
-            "character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["character_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -93,10 +87,7 @@
       "compositePrimaryKeys": {
         "character_skills_character_id_skill_id_pk": {
           "name": "character_skills_character_id_skill_id_pk",
-          "columns": [
-            "character_id",
-            "skill_id"
-          ]
+          "columns": ["character_id", "skill_id"]
         }
       },
       "uniqueConstraints": {},
@@ -236,12 +227,8 @@
           "name": "characters_account_id_accounts_id_fk",
           "tableFrom": "characters",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -282,12 +269,8 @@
           "name": "granted_rewards_character_id_characters_id_fk",
           "tableFrom": "granted_rewards",
           "tableTo": "characters",
-          "columnsFrom": [
-            "character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["character_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -424,12 +407,8 @@
           "name": "inventory_items_character_id_characters_id_fk",
           "tableFrom": "inventory_items",
           "tableTo": "characters",
-          "columnsFrom": [
-            "character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["character_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -524,12 +503,8 @@
           "name": "item_transactions_character_id_characters_id_fk",
           "tableFrom": "item_transactions",
           "tableTo": "characters",
-          "columnsFrom": [
-            "character_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["character_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -537,12 +512,8 @@
           "name": "item_transactions_inventory_item_id_inventory_items_id_fk",
           "tableFrom": "item_transactions",
           "tableTo": "inventory_items",
-          "columnsFrom": [
-            "inventory_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inventory_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

@@ -17,6 +17,7 @@ import {
   ServerMessage,
   type AttackRejected,
   type AttackResult,
+  type AutoGrindStatus,
   type CharacterStats,
   type DropView,
   type EnhanceResult,
@@ -25,6 +26,7 @@ import {
   type ItemPickedUp,
   type ItemRejected,
   type LevelUp,
+  type MonsterKilled,
   type MonsterView,
   type PickupRejected,
   type SkillRejected,
@@ -450,4 +452,86 @@ describe('combat in a map room', () => {
       .where(eq(inventoryItems.itemId, 'ember-tonic'));
     expect(left.filter((r) => r.characterId === a.characterId)[0]!.quantity).toBe(1);
   });
+
+  it('auto-grinds: kills monsters and collects only permitted loot through the normal paths', async () => {
+    const a = await join({ level: 10, dx: -100 });
+    const status = () => a.got<AutoGrindStatus>(ServerMessage.AutoGrind);
+    await waitFor(() => status().length === 1); // sent on join
+    expect(status()[0]!.state).toBe('DISABLED');
+
+    a.room.send(ClientMessage.AutoGrindConfig, {
+      skills: ['basic-attack'],
+      target: 'nearest',
+      hpPotionPct: 0,
+      mpPotionPct: 0,
+      loot: 'currency',
+      bounds: { minX: 300, maxX: 1000 },
+    });
+    await waitFor(() => status().length === 2);
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: true });
+
+    const killed = () => a.got<MonsterKilled>(ServerMessage.MonsterKilled);
+    await waitFor(() => killed().length >= 1, 15_000);
+    await waitFor(
+      () => a.got<Inventory>(ServerMessage.Inventory).some((i) => i.currency > 0),
+      15_000,
+    );
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: false });
+    await waitFor(() => status().at(-1)!.reason === 'disabled');
+
+    // Rewards went through the keyed grants: exactly one EXP ledger entry per kill.
+    const expKeys = async () =>
+      (
+        await conn.db
+          .select()
+          .from(grantedRewards)
+          .where(eq(grantedRewards.characterId, a.characterId))
+      ).filter((r) => r.key.startsWith('exp:')).length;
+    await delay(300); // let in-flight grants commit
+    expect(await expKeys()).toBe(killed().length);
+    // loot: 'currency' never picks up items.
+    const items = await conn.db
+      .select()
+      .from(inventoryItems)
+      .where(eq(inventoryItems.characterId, a.characterId));
+    expect(items).toEqual([]);
+    // Movement stayed inside the configured bounds.
+    expect(me(a.room)!.x).toBeGreaterThanOrEqual(300 - 5);
+    expect(me(a.room)!.x).toBeLessThanOrEqual(1000 + 5);
+    expect(a.got<AutoGrindStatus>(ServerMessage.AutoGrind).map((st) => st.state)).toEqual(
+      expect.arrayContaining(['SEARCHING', 'ATTACKING']),
+    );
+  }, 40_000);
+
+  it('manual input overrides automation, and a disconnect stops it', async () => {
+    const a = await join({ level: 10, dx: -300 });
+    const status = () => a.got<AutoGrindStatus>(ServerMessage.AutoGrind);
+    await waitFor(() => status().length === 1);
+    a.room.send(ClientMessage.AutoGrindToggle, { enabled: true });
+    await waitFor(() => status().some((st) => st.state !== 'DISABLED'));
+
+    a.room.send(ClientMessage.Input, {
+      seq: 0,
+      left: true,
+      right: false,
+      up: false,
+      down: false,
+      jump: false,
+    });
+    await waitFor(() => status().at(-1)!.state === 'PAUSED');
+    expect(status().at(-1)!.reason).toBe('manual_input');
+
+    const client = new Client(`ws://localhost:${PORT}`);
+    const token = a.room.reconnectionToken;
+    a.room.reconnection.enabled = false;
+    open.splice(open.indexOf(a.room), 1); // closed below; cleanup leaves the rejoined room
+    a.room.connection.close(3000); // network drop
+    await delay(200);
+    const rejoined = await client.reconnect(token);
+    open.push(rejoined);
+    const after = await new Promise<AutoGrindStatus>((r) =>
+      rejoined.onMessage(ServerMessage.AutoGrind, r),
+    );
+    expect(after).toMatchObject({ state: 'DISABLED', reason: 'disconnected' });
+  }, 20_000);
 });

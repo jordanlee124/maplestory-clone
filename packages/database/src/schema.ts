@@ -133,6 +133,16 @@ export const grantedRewards = pgTable('granted_rewards', {
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Saved auto-grind settings; whether automation is running is never stored. */
+export const autoGrindConfigs = pgTable('auto_grind_configs', {
+  characterId: uuid()
+    .primaryKey()
+    .references(() => characters.id, { onDelete: 'cascade' }),
+  /** Validated with the protocol's AutoGrindConfig schema on write and on load. */
+  config: jsonb().$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Account = typeof accounts.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type InventoryItem = typeof inventoryItems.$inferSelect;

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   COMBAT,
   DROP_TABLES,
+  ITEMS,
   ITEM_USE_COOLDOWN_MS,
   LEVELING,
   LOOT,
@@ -17,10 +18,13 @@ import {
   stepBody,
   stepMonsterAi,
   TICK_RATE,
+  type MoveInput,
   type Rng,
 } from '@cindervale/game-core';
 import {
   AttackRequest,
+  AutoGrindConfig,
+  AutoGrindToggle,
   ClientMessage,
   EquipRequest,
   ForgeRequest,
@@ -35,6 +39,7 @@ import {
   UseItemRequest,
   type AttackRejected,
   type AttackResult,
+  type AutoGrindStatus,
   type CharacterStats,
   type DropView,
   type EnhanceResult,
@@ -65,6 +70,18 @@ import {
   type EnhanceOutcome,
 } from './items';
 import { grantExp, grantLoot, loadInventory } from './rewards';
+import {
+  disabledAuto,
+  isIdle,
+  isRunning,
+  loadAutoConfig,
+  normalizeConfig,
+  pauseAuto,
+  saveAutoConfig,
+  startAuto,
+  stepAuto,
+  type AutoAction,
+} from './autogrind';
 import type { EquipInstance } from './equipment';
 import {
   checkLearn,
@@ -93,7 +110,11 @@ const MAX_QUEUED_INPUTS = 30;
 const MAX_STEP_CREDITS = 10;
 
 type MapClient = Client<{
-  auth: Character & { skills: Map<string, number>; equipment: EquipInstance[] };
+  auth: Character & {
+    skills: Map<string, number>;
+    equipment: EquipInstance[];
+    autoConfig: AutoGrindConfig;
+  };
 }>;
 
 /**
@@ -153,13 +174,16 @@ export function createMapRoom({
       this.onMessage(ClientMessage.Input, InputMessage, (client, input) => {
         const s = this.sessions.get(client.sessionId);
         if (!s || input.seq <= s.lastQueuedSeq || s.inputs.length >= MAX_QUEUED_INPUTS) return;
+        if (!isIdle(input)) this.manualOverride(s);
         s.inputs.push(input);
         s.lastQueuedSeq = input.seq;
       });
-      this.onMessage(ClientMessage.Attack, AttackRequest, (client, req) =>
-        this.handleAttack(client, req),
-      );
+      this.onMessage(ClientMessage.Attack, AttackRequest, (client, req) => {
+        this.manualOverride(this.sessions.get(client.sessionId));
+        this.handleAttack(client, req);
+      });
       this.onMessage(ClientMessage.Pickup, PickupRequest, (client, req) => {
+        this.manualOverride(this.sessions.get(client.sessionId));
         void this.handlePickup(client, req.dropId);
       });
       this.onMessage(ClientMessage.Respawn, RespawnRequest, (client) => this.handleRespawn(client));
@@ -183,7 +207,19 @@ export function createMapRoom({
         );
       });
       this.onMessage(ClientMessage.UseItem, UseItemRequest, (client, req) => {
+        this.manualOverride(this.sessions.get(client.sessionId));
         void this.handleUseItem(client, req.itemId);
+      });
+      this.onMessage(ClientMessage.AutoGrindConfig, AutoGrindConfig, (client, config) => {
+        void this.handleAutoConfig(client, config);
+      });
+      this.onMessage(ClientMessage.AutoGrindToggle, AutoGrindToggle, (client, { enabled }) => {
+        const s = this.sessions.get(client.sessionId);
+        if (!s) return;
+        s.auto = enabled
+          ? startAuto(s.auto, s, this.map, now())
+          : disabledAuto(s.auto.config, 'disabled');
+        this.sendAuto(s, true);
       });
 
       this.setTimestep((deltaMs) => this.tick(deltaMs), 1000 / TICK_RATE);
@@ -214,6 +250,12 @@ export function createMapRoom({
         ...character,
         skills: await loadSkills(db, character.id),
         equipment: await loadEquipped(db, character.id),
+        autoConfig: await loadAutoConfig(
+          db,
+          character.id,
+          character.classId,
+          this.map.geometry.width,
+        ),
       };
     }
 
@@ -235,10 +277,14 @@ export function createMapRoom({
 
       client.send(ServerMessage.ExpGained, this.progress(s, 0));
       this.sendStats(s);
+      this.sendAuto(s, true);
       void this.sendInventory(client, c.id);
     }
 
     override onDrop(client: MapClient) {
+      // Automation never runs for a player who isn't connected.
+      const s = this.sessions.get(client.sessionId);
+      if (s) s.auto = disabledAuto(s.auto.config, 'disconnected');
       // Not awaited: an expired window rejects the deferred, and onLeave handles cleanup.
       this.allowReconnection(client, reconnectSeconds);
     }
@@ -250,6 +296,7 @@ export function createMapRoom({
       s.inputs = [];
       s.lastQueuedSeq = s.lastSeq;
       this.sendStats(s);
+      this.sendAuto(s, true);
     }
 
     override async onLeave(client: MapClient) {
@@ -328,6 +375,79 @@ export function createMapRoom({
       }
     }
 
+    // ---- Automation ----
+
+    /** Manual play takes over from automation immediately. */
+    private manualOverride(s: Session | undefined) {
+      if (!s || !isRunning(s.auto)) return;
+      s.auto = pauseAuto(s.auto, now());
+      this.sendAuto(s);
+    }
+
+    private async handleAutoConfig(client: MapClient, requested: AutoGrindConfig) {
+      const s = this.sessions.get(client.sessionId);
+      if (!s) return;
+      const config = normalizeConfig(requested, s.classId, this.map.geometry.width);
+      const refuse = (reason: AutoGrindStatus['reason']) =>
+        client.send(ServerMessage.AutoGrind, {
+          state: s.auto.state,
+          config: s.auto.config,
+          reason,
+        } satisfies AutoGrindStatus);
+      if (!config) return refuse('invalid_config');
+      try {
+        await saveAutoConfig(db, s.characterId, config);
+      } catch (err) {
+        console.error(`Saving auto-grind config for ${s.characterId} failed`, err);
+        return refuse('error');
+      }
+      s.auto = { ...s.auto, config };
+      this.sendAuto(s, true);
+    }
+
+    /** Runs one automation decision; returns the movement input for this tick, if running. */
+    private stepAutomation(s: Session, t: number): MoveInput | undefined {
+      if (s.auto.state === 'DISABLED') return undefined;
+      const r = stepAuto(s.auto, s, {
+        map: this.map,
+        monsters: this.monsters,
+        drops: this.drops.values(),
+        now: t,
+      });
+      s.auto = r.auto;
+      this.sendAuto(s);
+      if (!isRunning(s.auto)) return undefined;
+      const client = this.clients.getById(s.sessionId);
+      if (client && r.action) this.runAutoAction(client, s, r.action);
+      return r.input;
+    }
+
+    /** Automated commands go through the same handlers, and checks, as a client's. */
+    private runAutoAction(client: MapClient, s: Session, action: AutoAction) {
+      if (action.type === 'attack') {
+        s.autoRequestId = s.autoRequestId >= 2 ** 31 - 1 ? 2 ** 30 : s.autoRequestId + 1;
+        this.handleAttack(client, {
+          requestId: s.autoRequestId,
+          skillId: action.skillId,
+          facing: action.facing,
+        });
+      } else if (action.type === 'pickup') {
+        void this.handlePickup(client, action.dropId);
+      } else {
+        void this.handleUseItem(client, action.itemId);
+      }
+    }
+
+    /** Sends the automation status to the owner when it changed (or always, if forced). */
+    private sendAuto(s: Session, force = false) {
+      const key = s.auto.state + ':' + (s.auto.reason ?? '');
+      if (!force && key === s.autoSent) return;
+      s.autoSent = key;
+      const status: AutoGrindStatus = { state: s.auto.state, config: s.auto.config };
+      if (s.auto.reason) status.reason = s.auto.reason;
+      this.clients.getById(s.sessionId)?.send(ServerMessage.AutoGrind, status);
+    }
+
     private async handlePickup(client: MapClient, dropId: string) {
       const s = this.sessions.get(client.sessionId);
       if (!s) return;
@@ -350,6 +470,7 @@ export function createMapRoom({
           drop.itemId
             ? { itemId: drop.itemId, quantity: drop.quantity }
             : { currency: drop.quantity },
+          rng,
         );
       } catch (err) {
         console.error(`Pickup of ${drop.id} failed`, err);
@@ -537,7 +658,16 @@ export function createMapRoom({
 
     private async sendInventory(client: MapClient, characterId: string) {
       try {
-        client.send(ServerMessage.Inventory, await loadInventory(db, characterId));
+        const inventory = await loadInventory(db, characterId);
+        const s = this.sessions.get(client.sessionId);
+        if (s) {
+          s.potions = new Map();
+          for (const i of inventory.items) {
+            if (!ITEMS[i.itemId]?.use) continue;
+            s.potions.set(i.itemId, (s.potions.get(i.itemId) ?? 0) + i.quantity);
+          }
+        }
+        client.send(ServerMessage.Inventory, inventory);
       } catch (err) {
         console.error(`Inventory load for ${characterId} failed`, err);
       }
@@ -559,11 +689,15 @@ export function createMapRoom({
       const t = now();
       for (const [sessionId, s] of this.sessions) {
         s.credits = Math.min(s.credits + (deltaMs * TICK_RATE) / 1000, MAX_STEP_CREDITS);
-        while (s.credits >= 1 && s.inputs.length > 0) {
-          const input = s.inputs.shift()!;
+        // Automation spends the same step credits as client input, through the same stepBody,
+        // so it can't move faster than real time or through collision.
+        const auto = this.stepAutomation(s, t);
+        while (s.credits >= 1 && (s.inputs.length > 0 || auto)) {
+          const input = s.inputs.shift();
+          const move = auto && (!input || isIdle(input)) ? auto : input!;
           // Dead players' inputs are acknowledged but don't move them.
-          if (!s.dead) s.body = stepBody(s.body, input, this.map.geometry);
-          s.lastSeq = input.seq;
+          if (!s.dead) s.body = stepBody(s.body, move, this.map.geometry);
+          if (input) s.lastSeq = input.seq;
           s.credits--;
         }
         const p = this.state.players.get(sessionId);

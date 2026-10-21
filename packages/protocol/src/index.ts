@@ -54,6 +54,8 @@ export const ClientMessage = {
   Forge: 'forge',
   Imprint: 'imprint',
   UseItem: 'useItem',
+  AutoGrindConfig: 'autoGrindConfig',
+  AutoGrindToggle: 'autoGrindToggle',
 } as const;
 
 /** One fixed simulation step of input. `seq` increases by 1 per step. */
@@ -150,6 +152,43 @@ export type ImprintRequest = z.infer<typeof ImprintRequest>;
 export const UseItemRequest = z.object({ itemId: z.string().min(1).max(64) });
 export type UseItemRequest = z.infer<typeof UseItemRequest>;
 
+// ---- Auto-grinding ----
+
+const pct = z.number().int().min(0).max(100);
+
+/** Saved per character. The server re-validates skills against the class and clamps bounds. */
+export const AutoGrindConfig = z
+  .object({
+    /** Allowed skills in priority order (attack and buff skills). Empty = basic attack only. */
+    skills: z.array(z.string().min(1).max(64)).max(8),
+    target: z.enum(['nearest', 'lowest_hp', 'highest_level']),
+    /** Use an HP / MP potion below this percentage; 0 = never. */
+    hpPotionPct: pct,
+    mpPotionPct: pct,
+    loot: z.enum(['all', 'currency', 'items', 'none']),
+    /** Horizontal area to grind in; null = the whole map. */
+    bounds: z
+      .object({ minX: z.number().finite(), maxX: z.number().finite() })
+      .refine((b) => b.minX < b.maxX, 'minX must be below maxX')
+      .nullable(),
+  })
+  .strict();
+export type AutoGrindConfig = z.infer<typeof AutoGrindConfig>;
+
+export const AutoGrindToggle = z.object({ enabled: z.boolean() }).strict();
+export type AutoGrindToggle = z.infer<typeof AutoGrindToggle>;
+
+export const AUTO_GRIND_STATES = [
+  'DISABLED',
+  'SEARCHING',
+  'MOVING',
+  'ATTACKING',
+  'LOOTING',
+  'RECOVERING',
+  'PAUSED',
+] as const;
+export type AutoGrindState = (typeof AUTO_GRIND_STATES)[number];
+
 export const ServerMessage = {
   AttackResult: 'attackResult',
   AttackRejected: 'attackRejected',
@@ -167,6 +206,7 @@ export const ServerMessage = {
   SkillRejected: 'skillRejected',
   ItemRejected: 'itemRejected',
   EnhanceResult: 'enhanceResult',
+  AutoGrind: 'autoGrind',
 } as const;
 
 export type AttackRejectReason =
@@ -321,6 +361,24 @@ export interface CharacterStats {
 export interface SkillRejected {
   skillId: string;
   reason: SkillRejectReason;
+}
+
+/**
+ * To the owner: on join, on every state change and after a config save. `reason` says why
+ * automation stopped or was refused.
+ */
+export interface AutoGrindStatus {
+  state: AutoGrindState;
+  config: AutoGrindConfig;
+  reason?:
+    | 'disabled'
+    | 'manual_input'
+    | 'died'
+    | 'time_limit'
+    | 'boss_instance'
+    | 'disconnected'
+    | 'invalid_config'
+    | 'error';
 }
 
 /** Synced monster state (MapState.monsters, keyed by monster id). */
