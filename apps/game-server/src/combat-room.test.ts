@@ -429,7 +429,7 @@ describe('combat in a map room', () => {
       got<Inventory>(ServerMessage.Inventory).some((i) => i.equipped.length === 1),
     );
 
-    room.send(ClientMessage.Forge, { instanceId: blade!.id, fromLevel: 0 });
+    room.send(ClientMessage.Forge, { instanceId: blade!.id, fromAttempts: 0 });
     await waitFor(() => got<EnhanceResult>(ServerMessage.EnhanceResult).length === 1);
     expect(got<EnhanceResult>(ServerMessage.EnhanceResult)[0]).toMatchObject({
       kind: 'forge',

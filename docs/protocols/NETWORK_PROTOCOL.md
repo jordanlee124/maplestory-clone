@@ -41,6 +41,20 @@ Rejections (`ServerError` code): 400 bad options/version, unknown map, or not th
 | `respawn`    | `{}`                                                                    | Only while dead and at least 2 s after death; otherwise ignored.                                                                                                                                                                    |
 | `learnSkill` | `{ skillId: string ≤ 64, level: int 1..100 }`                           | Spends 1 skill point raising the skill to `level`, which must be its current level + 1 (a resent request is rejected as `stale`, never applied twice). One at a time: wait for `characterStats` or `skillRejected` before the next. |
 
+Phase 2 additions (all v3-compatible):
+
+| Type              | Payload                                     | Rules                                                                                                                                                      |
+| ----------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `equip`           | `{ instanceId: uuid }`                      | Own bag item, equipment, class and level allowed. The item already in that slot moves to the freed bag slot.                                               |
+| `unequip`         | `{ slot: weapon \| hat \| … \| shoulder }`  | Needs a free bag slot.                                                                                                                                     |
+| `forge`           | `{ instanceId: uuid, fromAttempts: int32 }` | `fromAttempts` must equal the item's forge attempt count (a resend is `stale`, even after a failure that kept the level). Paid whether it succeeds or not. |
+| `imprint`         | `{ instanceId: uuid, fromRolls: int32 }`    | `fromRolls` must equal the item's reroll count. Paid.                                                                                                      |
+| `useItem`         | `{ itemId: string ≤ 64 }`                   | A held consumable; alive; 500 ms cooldown.                                                                                                                 |
+| `autoGrindConfig` | `AutoGrindConfig` (see `protocol`)          | Skills must be the class's attack or buff skills (max 8, no duplicates); bounds are clamped to the map. Saved per character.                               |
+| `autoGrindToggle` | `{ enabled: boolean }`                      | Refused in boss instances or while dead.                                                                                                                   |
+
+Item operations and `learnSkill` run one at a time per player (`busy` otherwise). `attack`, `pickup`, `useItem` and any non-idle `input` pause running automation.
+
 A payload that fails its Zod schema (wrong type, unknown enum value, extra keys on `respawn`) **disconnects the client** (Colyseus `WITH_ERROR`). A legitimate client never sends one. Extra keys on other messages are stripped, so claimed damage is never read.
 
 ### Server → client messages
@@ -60,6 +74,13 @@ A payload that fails its Zod schema (wrong type, unknown enum value, extra keys 
 | `playerDied` / `playerRespawned` | `{ sessionId }`                                                                                  | all       |                                                                                                                                                                                                                                                                                                                 |
 | `characterStats`                 | `{ stats: Stats, skillPoints, skills: [{ skillId, level }], buffs: [{ skillId, remainingMs }] }` | owner     | On join/reconnect, level-up, skill learned, buff cast and buff expiry. `stats` is the full sheet (STR/DEX/INT/LUK, maxHp, maxMp, attack, magic, defense, critRate, critDamage, bossDamage, ignoreDefense) with passives and buffs applied. `skills` lists every skill the class can see; level 0 = not learned. |
 | `skillRejected`                  | `{ skillId, reason }`                                                                            | requester | `unknown_skill`, `wrong_class`, `level_too_low`, `prerequisite`, `max_level`, `no_skill_points`, `stale`, `busy` (another learn in flight), `error`. Nothing is spent.                                                                                                                                          |
+
+| `inventory` (extended) | `{ currency, capacity, items: [{ id, slot, itemId, quantity, bonus, forgeLevel, forgeAttempts, imprintTier, imprints, imprintRolls }], equipped: [{ …same, equipSlot }] }` | owner | On join and after every item change. Equipment rows are instances (`id`). |
+| `itemRejected` | `{ action, reason }` | requester | `not_found`, `not_equipment`, `not_usable`, `wrong_class`, `level_too_low`, `inventory_full`, `max_level`, `insufficient_currency`, `stale`, `cooldown`, `invalid_state`, `busy`, `error`. Nothing changed. |
+| `enhanceResult` | `{ kind: 'forge' \| 'imprint', instanceId, success, cost, forgeLevel, forgeAttempts, imprintTier, imprints }` | requester | After a paid attempt (then `inventory`, and `characterStats` if worn). |
+| `autoGrind` | `{ state, config, reason? }` | owner | On join/reconnect, every state change and config save. `reason`: `disabled`, `manual_input`, `died`, `time_limit`, `boss_instance`, `disconnected`, `invalid_config`, `busy` (another config save in flight), `error`. |
+
+Automated attacks use `requestId` ≥ 2^30, so they never collide with client ids. While automation runs, the server moves the player without acknowledging new input seqs, so the client should follow the server position instead of predicting.
 
 Buff skills are cast with `attack` like any skill: the result is an `attackResult` with empty `hits` (so other clients can play the cast) followed by `characterStats` to the caster. Buffs end with the session.
 
@@ -103,3 +124,7 @@ The server side of combat is complete and tested. The client still needs to:
 1. Build skill slots from `characterStats.skills`: only `level > 0` skills whose `SKILLS[id].kind` is `attack` or `buff`. Passives are never sent. Each class now has 4 skills (innate attack, passive, buff, second attack), not one.
 2. A skill window: list the class's skills with level, `maxLevel`, `requiredLevel`, `requires` and `skillPoints`; send `learnSkill { skillId, level: current + 1 }` and show `skillRejected` reasons.
 3. A stats window from `characterStats.stats`, and buff icons from `buffs[].remainingMs`.
+4. Equipment and inventory windows from `inventory` (`items`, `equipped`), sending `equip`/`unequip`. Forge and imprint buttons send the item's current `forgeAttempts`/`imprintRolls` and show `enhanceResult`.
+5. Potion hotkeys send `useItem` (replacing the current "unavailable" message).
+6. An auto-grind panel: edit and send `autoGrindConfig`, toggle with `autoGrindToggle`, show `autoGrind.state`/`reason`. While running, render the authoritative position without local prediction.
+7. Add `itemRejected`, `enhanceResult` and `autoGrind` to any map that covers every `ServerMessage`.

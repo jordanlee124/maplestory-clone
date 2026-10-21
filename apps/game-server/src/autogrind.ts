@@ -32,6 +32,8 @@ export interface AutoGrind {
   targetId: string | null;
   /** When the current target was chosen or last attacked. */
   targetSince: number;
+  /** Drops whose automated pickup was refused (bag full, error); never retried this run. */
+  skipDrops: readonly string[];
   reason?: AutoGrindStatus['reason'];
 }
 
@@ -69,6 +71,7 @@ export const disabledAuto = (
   pausedUntil: 0,
   targetId: null,
   targetSince: 0,
+  skipDrops: [],
   reason,
 });
 
@@ -96,14 +99,25 @@ export function normalizeConfig(
   return minX < maxX ? { ...config, bounds: { minX, maxX } } : null;
 }
 
-/** Starts automation, unless the map is a boss instance or the player is dead. */
+/**
+ * Starts automation, unless the map is a boss instance or the player is dead. Re-enabling a
+ * run that is already on keeps its start time, so the run-time limit can't be reset.
+ */
 export function startAuto(a: AutoGrind, s: Session, map: MapDef, now: number): AutoGrind {
   if (map.bossInstance) return disabledAuto(a.config, 'boss_instance');
   if (s.dead) return disabledAuto(a.config, 'died');
+  if (a.state !== 'DISABLED') return a;
   return { ...disabledAuto(a.config), state: 'SEARCHING', startedAt: now };
 }
 
-/** Manual input takes over at once; automation resumes after a quiet period. */
+/** Remembers a drop whose automated pickup was refused (bounded). */
+export const skipDrop = (a: AutoGrind, dropId: string): AutoGrind =>
+  a.state === 'DISABLED' ? a : { ...a, skipDrops: [...a.skipDrops, dropId].slice(-50) };
+
+/**
+ * Manual input takes over at once; automation resumes after a quiet period. Every further
+ * manual input extends the pause.
+ */
 export function pauseAuto(a: AutoGrind, now: number): AutoGrind {
   if (a.state === 'DISABLED') return a;
   return {
@@ -196,13 +210,12 @@ export function stepAuto(
   // The walkable area: this platform, inside the configured bounds.
   const lo = Math.max(here.x, a.config.bounds?.minX ?? -Infinity);
   const hi = Math.min(here.x + here.width, a.config.bounds?.maxX ?? Infinity);
-  if (lo >= hi) return idle({ ...a, state: 'SEARCHING', targetId: null });
-  if (s.body.x < lo || s.body.x > hi) {
-    // Started outside the bounds: walk back in before doing anything else.
-    return {
-      auto: { ...a, state: 'MOVING', targetId: null },
-      input: toward(s.body.x, (lo + hi) / 2),
-    };
+  if (lo >= hi || s.body.x < lo || s.body.x > hi) {
+    // Outside the bounds (or on a platform that misses them): walk toward them first. Walking
+    // off a ledge is ordinary movement, so this can drop the player onto a lower platform.
+    const b = a.config.bounds;
+    const goal = lo < hi ? (lo + hi) / 2 : b ? (b.minX + b.maxX) / 2 : s.body.x;
+    return { auto: { ...a, state: 'MOVING', targetId: null }, input: toward(s.body.x, goal) };
   }
   const reachable = (x: number) => x >= lo && x <= hi;
   const onPlatform = (m: Monster) => m.ai.mode !== 'dead' && m.y === here.y && reachable(m.ai.x);
@@ -218,6 +231,7 @@ export function stepAuto(
       .filter(
         (d) =>
           wantsLoot(a, d) &&
+          !a.skipDrops.includes(d.id) &&
           reachable(d.x) &&
           Math.abs(d.y - s.body.y) <= LOOT.pickupRange.y &&
           (!d.ownerId || d.ownerId === s.characterId || w.now >= d.ownerUntil),

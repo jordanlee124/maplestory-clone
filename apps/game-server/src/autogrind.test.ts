@@ -6,6 +6,7 @@ import {
   disabledAuto,
   normalizeConfig,
   pauseAuto,
+  skipDrop,
   startAuto,
   stepAuto,
   type AutoGrind,
@@ -77,6 +78,33 @@ describe('auto-grind state machine', () => {
     expect(step(paused, s, monsters, [], NOW + AUTO_GRIND.manualOverrideMs).auto.state).not.toBe(
       'PAUSED',
     );
+  });
+
+  it('keeps the run start when re-enabled, and extends a pause on further input', () => {
+    const { s, monsters, auto } = setup();
+    expect(startAuto(auto, s, map, NOW + 60_000).startedAt).toBe(NOW);
+    const paused = pauseAuto(pauseAuto(auto, NOW), NOW + 2000);
+    expect(paused.pausedUntil).toBe(NOW + 2000 + AUTO_GRIND.manualOverrideMs);
+    expect(step(paused, s, monsters, [], NOW + AUTO_GRIND.manualOverrideMs).auto.state).toBe(
+      'PAUSED',
+    );
+  });
+
+  it('skips a drop whose pickup was refused instead of retrying it', () => {
+    const { s, monsters, auto } = setup(400);
+    const cash = drop(410, { id: 'cash' });
+    expect(step(auto, s, monsters, [cash]).action).toEqual({ type: 'pickup', dropId: 'cash' });
+    const r = step(skipDrop(auto, 'cash'), s, monsters, [cash]);
+    expect(r.action?.type).not.toBe('pickup');
+    expect(r.auto.state).not.toBe('LOOTING');
+  });
+
+  it('walks toward the bounds from a platform that misses them', () => {
+    const { s, monsters } = setup(400);
+    const far = setup(400, { bounds: { minX: 2000, maxX: 2400 } }).auto;
+    const r = step(far, s, monsters);
+    expect(r.auto.state).toBe('MOVING');
+    expect(r.input.right).toBe(true);
   });
 
   it('walks toward the chosen target with ordinary inputs only', () => {

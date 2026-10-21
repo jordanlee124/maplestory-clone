@@ -73,8 +73,10 @@ export const inventoryItems = pgTable(
     quantity: integer().notNull(),
     /** Bonus stat lines rolled once at creation. */
     bonus: jsonb().$type<StatLineRow[]>().notNull().default([]),
-    /** Forge Ascension level. */
+    /** Forge Ascension level, and the attempt count (request idempotency: a failed attempt
+     * may leave the level unchanged). */
     forgeLevel: integer().notNull().default(0),
+    forgeAttempts: integer().notNull().default(0),
     /** Arcane Imprint tier (0 = none), its lines, and the reroll count (request idempotency). */
     imprintTier: integer().notNull().default(0),
     imprints: jsonb().$type<StatLineRow[]>().notNull().default([]),

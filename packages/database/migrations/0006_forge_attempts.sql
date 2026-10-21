@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_items" ADD COLUMN "forge_attempts" integer DEFAULT 0 NOT NULL;

@@ -78,6 +78,7 @@ import {
   normalizeConfig,
   pauseAuto,
   saveAutoConfig,
+  skipDrop,
   startAuto,
   stepAuto,
   type AutoAction,
@@ -173,8 +174,8 @@ export function createMapRoom({
 
       this.onMessage(ClientMessage.Input, InputMessage, (client, input) => {
         const s = this.sessions.get(client.sessionId);
+        if (s && !isIdle(input)) this.manualOverride(s); // even when the input itself is dropped
         if (!s || input.seq <= s.lastQueuedSeq || s.inputs.length >= MAX_QUEUED_INPUTS) return;
-        if (!isIdle(input)) this.manualOverride(s);
         s.inputs.push(input);
         s.lastQueuedSeq = input.seq;
       });
@@ -198,7 +199,7 @@ export function createMapRoom({
       });
       this.onMessage(ClientMessage.Forge, ForgeRequest, (client, req) => {
         void this.itemOp(client, 'forge', (s) =>
-          forgeItem(db, s.characterId, req.instanceId, req.fromLevel, rng),
+          forgeItem(db, s.characterId, req.instanceId, req.fromAttempts, rng),
         );
       });
       this.onMessage(ClientMessage.Imprint, ImprintRequest, (client, req) => {
@@ -379,7 +380,7 @@ export function createMapRoom({
 
     /** Manual play takes over from automation immediately. */
     private manualOverride(s: Session | undefined) {
-      if (!s || !isRunning(s.auto)) return;
+      if (!s || s.auto.state === 'DISABLED') return;
       s.auto = pauseAuto(s.auto, now());
       this.sendAuto(s);
     }
@@ -395,11 +396,16 @@ export function createMapRoom({
           reason,
         } satisfies AutoGrindStatus);
       if (!config) return refuse('invalid_config');
+      // One save at a time, so the session and the stored row can't end up different.
+      if (s.autoConfigPending) return refuse('busy');
+      s.autoConfigPending = true;
       try {
         await saveAutoConfig(db, s.characterId, config);
       } catch (err) {
         console.error(`Saving auto-grind config for ${s.characterId} failed`, err);
         return refuse('error');
+      } finally {
+        s.autoConfigPending = false;
       }
       s.auto = { ...s.auto, config };
       this.sendAuto(s, true);
@@ -432,7 +438,10 @@ export function createMapRoom({
           facing: action.facing,
         });
       } else if (action.type === 'pickup') {
-        void this.handlePickup(client, action.dropId);
+        // A refused pickup (bag full, error) is skipped, not retried every tick.
+        void this.handlePickup(client, action.dropId).then((refused) => {
+          if (refused) s.auto = skipDrop(s.auto, action.dropId);
+        });
       } else {
         void this.handleUseItem(client, action.itemId);
       }
@@ -448,12 +457,15 @@ export function createMapRoom({
       this.clients.getById(s.sessionId)?.send(ServerMessage.AutoGrind, status);
     }
 
+    /** Returns the rejection reason, or null once the pickup is granted. */
     private async handlePickup(client: MapClient, dropId: string) {
       const s = this.sessions.get(client.sessionId);
-      if (!s) return;
+      if (!s) return null;
       const drop = this.drops.get(dropId);
-      const reject = (reason: PickupRejectReason) =>
+      const reject = (reason: PickupRejectReason) => {
         client.send(ServerMessage.PickupRejected, { dropId, reason } satisfies PickupRejected);
+        return reason;
+      };
       if (s.pickupPending) return reject('invalid_state');
       const invalid = validatePickup(s, drop, now());
       if (invalid || !drop) return reject(invalid ?? 'not_found');
@@ -486,12 +498,12 @@ export function createMapRoom({
           quantity: drop.quantity,
         } satisfies ItemPickedUp);
         await this.sendInventory(client, s.characterId);
-        return;
+        return null;
       }
       if (result === 'duplicate') return reject('not_found');
       // Not granted: put the drop back for this player (or someone else) to take later.
       if (now() < drop.expiresAt) this.addDrop(drop);
-      reject(result);
+      return reject(result);
     }
 
     /**
@@ -511,9 +523,20 @@ export function createMapRoom({
         client.send(ServerMessage.ItemRejected, { action, reason } satisfies ItemRejected);
       if (s.itemPending) return reject('busy');
       s.itemPending = true;
+      let result: Awaited<ReturnType<typeof run>>;
       try {
-        const result = await run(s);
-        if (!result.ok) return reject(result.reason);
+        result = await run(s);
+      } catch (err) {
+        console.error(`Item ${action} for ${s.characterId} failed`, err);
+        s.itemPending = false;
+        return reject('error');
+      }
+      if (!result.ok) {
+        s.itemPending = false;
+        return reject(result.reason);
+      }
+      // Committed: a refresh failure below must not be reported as "nothing changed".
+      try {
         if ('row' in result) {
           client.send(ServerMessage.EnhanceResult, {
             kind: action === 'forge' ? 'forge' : 'imprint',
@@ -521,6 +544,7 @@ export function createMapRoom({
             success: result.success,
             cost: result.cost,
             forgeLevel: result.row.forgeLevel,
+            forgeAttempts: result.row.forgeAttempts,
             imprintTier: result.row.imprintTier,
             imprints: result.row.imprints as EnhanceResult['imprints'],
           } satisfies EnhanceResult);
@@ -532,8 +556,7 @@ export function createMapRoom({
         }
         await this.sendInventory(client, s.characterId);
       } catch (err) {
-        console.error(`Item ${action} for ${s.characterId} failed`, err);
-        reject('error');
+        console.error(`Refreshing after item ${action} for ${s.characterId} failed`, err);
       } finally {
         s.itemPending = false;
       }

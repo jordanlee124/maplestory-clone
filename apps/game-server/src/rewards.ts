@@ -146,6 +146,7 @@ export async function loadInventory(db: Db, characterId: string): Promise<Invent
     quantity: r.quantity,
     bonus: r.bonus as ItemView['bonus'],
     forgeLevel: r.forgeLevel,
+    forgeAttempts: r.forgeAttempts,
     imprintTier: r.imprintTier,
     imprints: r.imprints as ItemView['imprints'],
     imprintRolls: r.imprintRolls,

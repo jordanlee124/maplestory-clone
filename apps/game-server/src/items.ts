@@ -153,21 +153,21 @@ export function forgeItem(
   db: Db,
   characterId: string,
   instanceId: string,
-  fromLevel: number,
+  fromAttempts: number,
   rng: Rng,
 ): Promise<EnhanceOutcome | Fail> {
   return db.transaction(async (tx) => {
     const c = await lockCharacter(tx, characterId);
     const row = await ownedEquipment(tx, characterId, instanceId);
     if (!row) return fail('not_found');
-    if (row.forgeLevel !== fromLevel) return fail('stale');
+    if (row.forgeAttempts !== fromAttempts) return fail('stale');
     const step = forgeStep(row.forgeLevel);
     if (!step) return fail('max_level');
     if (c.currency < step.cost) return fail('insufficient_currency');
     const { success, level } = rollForge(row.forgeLevel, rng);
     const [updated] = await tx
       .update(inventoryItems)
-      .set({ forgeLevel: level })
+      .set({ forgeLevel: level, forgeAttempts: row.forgeAttempts + 1 })
       .where(eq(inventoryItems.id, row.id))
       .returning();
     await charge(tx, characterId, step.cost);
@@ -176,7 +176,7 @@ export function forgeItem(
       characterId,
       'forge',
       row.id,
-      { version: FORGE.version, from: fromLevel, to: level, success },
+      { version: FORGE.version, from: row.forgeLevel, to: level, success },
       -step.cost,
     );
     return { ok: true, success, cost: step.cost, row: updated!, worn: row.equipSlot !== null };

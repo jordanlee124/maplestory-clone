@@ -137,7 +137,16 @@ describe('Forge Ascension', () => {
     const win = await forgeItem(conn.db, id, rows[0]!.id, 0, () => 0);
     expect(win).toMatchObject({ ok: true, success: true, cost, row: { forgeLevel: 1 } });
     const lose = await forgeItem(conn.db, id, rows[0]!.id, 1, () => 0.999);
-    expect(lose).toMatchObject({ ok: true, success: false, row: { forgeLevel: 1 } });
+    expect(lose).toMatchObject({
+      ok: true,
+      success: false,
+      row: { forgeLevel: 1, forgeAttempts: 2 },
+    });
+    // The failure kept the level; resending the same request is still stale, never a 2nd charge.
+    expect(await forgeItem(conn.db, id, rows[0]!.id, 1, () => 0)).toEqual({
+      ok: false,
+      reason: 'stale',
+    });
     expect(await currency(id)).toBe(0);
     const entries = await logs(id);
     expect(entries.map((l) => l.detail.version)).toEqual([FORGE.version, FORGE.version]);
@@ -165,7 +174,7 @@ describe('Forge Ascension', () => {
       .set({ forgeLevel: FORGE.levels.length })
       .where(eq(inventoryItems.id, rows[0]!.id));
     await conn.db.update(characters).set({ currency: 1e9 }).where(eq(characters.id, id));
-    expect(await forgeItem(conn.db, id, rows[0]!.id, FORGE.levels.length, () => 0)).toEqual({
+    expect(await forgeItem(conn.db, id, rows[0]!.id, 0, () => 0)).toEqual({
       ok: false,
       reason: 'max_level',
     });

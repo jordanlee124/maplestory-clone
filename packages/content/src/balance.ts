@@ -501,7 +501,7 @@ export const DROP_TABLES: Record<string, DropTable> = {
       { itemId: 'twig-bundle', chance: 0.6, min: 1, max: 2 },
       { itemId: 'ember-tonic', chance: 0.08, min: 1, max: 1 },
       { itemId: 'sprout-cap', chance: 0.02, min: 1, max: 1 },
-      { itemId: 'reedgrip-gloves', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'reedgrip-gloves', chance: 0.01, min: 1, max: 1 },
       { itemId: 'ember-brand', chance: 0.01, min: 1, max: 1 },
       { itemId: 'gale-shortbow', chance: 0.01, min: 1, max: 1 },
       { itemId: 'runewood-staff', chance: 0.01, min: 1, max: 1 },

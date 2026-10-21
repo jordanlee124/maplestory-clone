@@ -19,16 +19,16 @@ Data definitions live in `packages/content`. Status: ✅ implemented · 📄 def
 | Fernreach Fields | Beginner area       | 1–15   | ✅ test map `fernreach-fields` (start map) |
 | Duskmire Caverns | Early advanced area | 15–30  | ✅ test map `duskmire-caverns`             |
 
-## Classes 📄
+## Classes ✅ (server)
 
-| Class        | Role           | Primary stat |
-| ------------ | -------------- | ------------ |
-| Ember Knight | Melee warrior  | STR          |
-| Gale Ranger  | Ranged archer  | DEX          |
-| Runewaver    | Spellcaster    | INT          |
-| Thornblade   | Agile assassin | LUK          |
+| Class        | Role           | Primary / secondary | Power  | Starter skills (innate attack · passive Lv 2 · buff Lv 3 · attack Lv 5) |
+| ------------ | -------------- | ------------------- | ------ | ----------------------------------------------------------------------- |
+| Ember Knight | Melee warrior  | STR / DEX           | Attack | Flame Cleave · Ashen Hide · Kindled Will · Ember Crash                  |
+| Gale Ranger  | Ranged archer  | DEX / STR           | Attack | Gust Arrow · Fletcher's Focus · Keen Eye · Tailwind Volley              |
+| Runewaver    | Spellcaster    | INT / LUK           | Magic  | Rune Burst · Runic Insight · Mana Weave · Glyph Lance                   |
+| Thornblade   | Agile assassin | LUK / DEX           | Attack | Twin Thorn · Venom Edge · Nightshade Focus · Bramble Flurry             |
 
-Classes are chosen at creation and stored. They have no mechanical effect yet.
+Skills have levels (max 10), a required character level, optional prerequisites (the Lv 5 attack needs the innate attack at 3), MP costs and cooldowns. Skill points: 3 per level gained, spent one level at a time. Passives add stats permanently; buffs add stats for 2 minutes and end on death or leaving. Advancement stages open at levels 1/30/60/100 (data only; no advancement flow yet).
 
 ## Monsters 📄 and boss 📄
 
@@ -41,10 +41,11 @@ Twig Creature (Lv 2), Fern Frog (Lv 5), Crystal Beetle (Lv 18).
 | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
 | Walk, jump, one-way platforms, ladders                                                                                   | ✅ server-authoritative, predicted |
 | Double jump, ropes, portals                                                                                              | ⏳                                 |
-| Combat (server-owned hits, damage, HP/MP, cooldowns, knockback, death/respawn, loot, EXP; client rendering pending)      | ⏳                                 |
-| Auto-grinding (targets, rotations, potion thresholds, loot, zones; server-validated; off in bosses; no offline grinding) | ⏳                                 |
+| Combat (server-owned hits, damage, HP/MP, cooldowns, knockback, death/respawn, loot, EXP)                                | ✅ server                          |
+| Stats, classes, skills, skill points, passives, buffs, potions                                                           | ✅ server; client UI pending       |
+| Auto-grinding (targets, rotations, potion thresholds, loot, zones; server-validated; off in bosses; no offline grinding) | ✅ server; client UI pending       |
 | Boss instances (phases, telegraphs, timers, death limits, difficulty, lockouts)                                          | ⏳                                 |
-| Equipment, enhancement, modifiers, sets                                                                                  | ⏳                                 |
+| Equipment, enhancement, modifiers, sets                                                                                  | ✅ server; client UI pending       |
 | Quests, dailies, weeklies                                                                                                | ⏳                                 |
 | Parties, guilds, trading, auction house                                                                                  | ⏳                                 |
 | Worlds and channels                                                                                                      | ⏳ (one room per map today)        |
@@ -59,9 +60,11 @@ Walk 180 px/s · jump 560 px/s · gravity 1500 px/s² · max fall 900 px/s · cl
 
 ## Combat (server-authoritative; values in `content/src/balance.ts`)
 
-**Damage** = AttackPower × SkillMultiplier × Crit (×1.5) × Defense (100 / (100 + DEF)) × Variance (0.9–1.1), floored, minimum 1. Monsters use the same formula (multiplier 1, no crits).
+**Damage** = Power × SkillMultiplier × (1 + CritDamage on a crit) × (1 + BossDamage vs bosses) × Defense (100 / (100 + DEF × (1 − IgnoreDefense))) × Variance (0.9–1.1), floored, minimum 1. Power is Attack, or Magic for Runewavers. Monsters use the same formula (multiplier 1, no crits).
 
-**Stats** = class base + per-level growth (HP, MP, ATK, DEF; crit rate fixed per class). Level-up refills HP/MP. Regen: 1% HP and 2% MP per second.
+**Stats** are derived, never stored: class base + per-level growth (STR/DEX/INT/LUK, HP, MP, DEF) + equipment + passives + buffs, then primary stat × 0.5 + secondary stat × 0.25 is added to Attack or Magic (`CLASS_SCALING`, `STAT_FORMULA`). Crit damage starts at +50%. Crit rate and ignore defense are capped at 100%. Level-up refills HP/MP. Regen: 1% HP and 2% MP per second.
+
+The skill table below lists level-1 values. Each skill level adds `multiplierPerLevel`. Every skill is in `SKILLS`.
 
 | Skill                   | Class        | ×ATK | MP  | Cooldown | Range (w×h) | Targets |
 | ----------------------- | ------------ | ---- | --- | -------- | ----------- | ------- |
@@ -78,3 +81,19 @@ Any two attacks are at least 350 ms apart. You can't attack while climbing or de
 **EXP** is split by damage share and granted once per monster life. EXP to the next level = ⌊15 × L^1.6⌋. Max level 200 (configurable).
 
 **Loot:** each drop-table entry rolls independently, and currency is _Cinders_. The top damage dealer owns the drops for 10 s, then anyone may take them. Drops expire after 60 s. The inventory has 24 slots, stacks fill first, and a pickup that doesn't fully fit is refused.
+
+## Equipment (server; values in `content/src/equipment.ts`)
+
+Eleven slots: weapon, hat, top, bottom, gloves, shoes, cape, ring, pendant, belt, shoulder. Each item has a rarity (common → legendary), a required level, optional class restrictions, base stats and an optional set. Every dropped copy is its own instance with **bonus stats** rolled once by rarity (0–4 lines). Equipping swaps out whatever was in the slot. Unequipping needs a free bag slot. Potions (Ember Tonic +50 HP, Dew Tonic +30 MP) are used server-side with a 0.5 s cooldown.
+
+**Forge Ascension:** levels 0→10. Each attempt costs Cinders whether it succeeds or not; success falls from 95% to 25%. Failing from level 5 or above drops one level. Each level adds +2 ATK/MAG (weapons) or +2 DEF/+8 HP (armor).
+**Arcane Imprints:** a reroll costs Cinders by tier (Faint 300 · Bright 600 · Radiant 1200 · Mythic 2400). The first roll awakens tier 1. Each reroll may raise the tier (10% / 4% / 1%) and replaces all lines with weighted rolls from the tier's pool.
+**Relic Resonance:** set pieces worn together add bonuses at 2, 3 and 4 pieces (Fernreach Wanderer: hat, top, bottom, shoes).
+
+Odds and costs are versioned (`FORGE.version`, `IMPRINTS.version`, recorded per attempt). There are no paid or premium rerolls.
+
+## Auto-grinding (server; `apps/game-server/src/autogrind.ts`)
+
+Players toggle it and configure allowed skills in priority order, target rule (nearest / lowest HP / highest level), HP and MP potion thresholds, loot preference (all / currency / items / none) and horizontal bounds. The server runs a state machine (DISABLED, SEARCHING, MOVING, ATTACKING, LOOTING, RECOVERING, PAUSED) that only produces ordinary movement inputs and commands. They go through the same step credits, collision, combat, pickup and potion paths as manual play.
+
+It targets monsters on the player's current platform inside the bounds. It respects cooldowns, MP, the attack lock and loot ownership, and drinks potions below the thresholds (or stands and regenerates without them). Any manual input pauses it for 3 s. It stops on disconnect, death, boss instances and after 2 hours (`AUTO_GRIND`). There is no offline grinding.

@@ -138,10 +138,11 @@ export const UnequipRequest = z.object({ slot: z.enum(EQUIP_SLOTS) });
 export type UnequipRequest = z.infer<typeof UnequipRequest>;
 
 /**
- * Forge Ascension attempt. `fromLevel` is the item's current forge level, so a resent request
- * is rejected as 'stale' instead of paying twice.
+ * Forge Ascension attempt. `fromAttempts` is the item's current forge attempt count (failed
+ * attempts can keep the level), so a resent request is rejected as 'stale' instead of paying
+ * twice.
  */
-export const ForgeRequest = z.object({ instanceId: z.uuid(), fromLevel: int32 });
+export const ForgeRequest = z.object({ instanceId: z.uuid(), fromAttempts: int32 });
 export type ForgeRequest = z.infer<typeof ForgeRequest>;
 
 /** Arcane Imprint reroll. `fromRolls` is the item's current reroll count (same idea). */
@@ -303,6 +304,7 @@ export interface ItemView {
   /** Bonus stats rolled at creation. */
   bonus: StatLineView[];
   forgeLevel: number;
+  forgeAttempts: number;
   imprintTier: number;
   imprints: StatLineView[];
   imprintRolls: number;
@@ -325,7 +327,7 @@ export type ItemRejectReason =
   | 'inventory_full'
   | 'max_level'
   | 'insufficient_currency'
-  /** `fromLevel`/`fromRolls` doesn't match (usually a resent request). */
+  /** `fromAttempts`/`fromRolls` doesn't match (usually a resent request). */
   | 'stale'
   | 'cooldown'
   | 'invalid_state'
@@ -343,6 +345,7 @@ export interface EnhanceResult {
   success: boolean;
   cost: number;
   forgeLevel: number;
+  forgeAttempts: number;
   imprintTier: number;
   imprints: StatLineView[];
 }
@@ -378,6 +381,7 @@ export interface AutoGrindStatus {
     | 'boss_instance'
     | 'disconnected'
     | 'invalid_config'
+    | 'busy'
     | 'error';
 }
 

@@ -50,6 +50,7 @@ export interface Session {
   autoRequestId: number;
   /** Last automation status sent to the owner, to send only changes. */
   autoSent: string;
+  autoConfigPending: boolean;
 }
 
 /** Recomputes stats after a level, skill or buff change; vitals are capped, not healed. */
@@ -114,6 +115,7 @@ export function createSession(
     potions: new Map(),
     autoRequestId: 2 ** 30,
     autoSent: '',
+    autoConfigPending: false,
   };
 }
 
