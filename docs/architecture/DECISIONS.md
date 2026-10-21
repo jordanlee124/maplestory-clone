@@ -51,3 +51,19 @@ Each EXP/loot grant inserts a unique key into `granted_rewards` (`exp:<monsterLi
 ## ADR-011: Combat rules split pure / server (2026-10-20)
 
 Formulas, leveling, hitboxes, drop rolls and the monster AI state machine are pure functions in `game-core`, with injected `now` and `rng`, so they're unit-tested deterministically. Validation and resolution that mutate session state are in `game-server/src/combat.ts`, with no IO. `map-room.ts` only wires messages, ticks and persistence. Balance numbers live only in `content`.
+
+## ADR-012: Pixel-art sheet contracts and integer display scaling (2026-10-21)
+
+Actor and equipment sheets use untrimmed 64×64 cells with bottom-centre anchors. Existing native drawings are padded, not resized; authoritative hurt boxes and all physics/combat rules stay in shared core/content. A typed art manifest records frame aliases, clip timing, origins, review bounds, status and explicit PNG approval/provenance. Approved files are loaded through one registry; procedural fallbacks are generated only for entries marked placeholder. Missing equipment stays absent, and bad approved imports fail validation rather than silently replacing art with placeholders.
+
+Phaser keeps a logical 1280×720 canvas and camera zoom 1, nearest texture filtering, and integer CSS display zoom through `Scale.NONE`. Widths between scale steps are letterboxed; small hosts scroll rather than fractionally shrinking. This preserves pixel geometry at the cost of unused horizontal space and possible vertical scrolling. The separate `/art-preview` client-only route and entrypoint provide pose/rig calibration and pixel-only visual baselines; QA markers never enter live gameplay. See `docs/art/PIXEL_ART_GUIDE.md` for the audit, proposed visual direction, missing approved assets and import contract.
+
+## ADR-013: Mixed visual layers and an approval-gated reference scene (2026-10-21)
+
+The maintainer changed the target from a restricted retro pixel-art contract to the visual richness of modern illustrated 2D RPGs, with original IP. ADR-012 remains the legacy placeholder contract; its universal cell size/filter and fixed camera limitations do not constrain new production art. `ART_DIRECTION.md` defines proportion/composition trials before asset dimensions are chosen.
+
+New approved assets use variable atlas rectangles, pixel pivots and body attachment anchors, unequal animation timing, independent face/accessory clocks and action-specific depth. Filtering is selected per texture. An opt-in mixed-filter renderer configuration preserves existing gameplay defaults; camera zoom is configurable with unchanged logical physics coordinates. The isolated `ArtValidationScene` loads only recorded approved art and includes separate world/UI cameras, parallax, bounded particles and finite effect playback. No network or collision authority moves into this layer.
+
+There are no approved production exports. `/art-validation` therefore shows labeled measurement guides and exact missing slots, never fabricated final art. Populate and visually approve this one scene before expanding production or replacing Fernreach gameplay art. The legacy renderer remains active until approved clips and scenery can be integrated and tested. See `docs/art/VISUAL_COMPARISON.md` for evidence and delivery gates.
+
+The subsequent explicit request to complete a populated visual test authorizes original candidate generation for this scene. Six AI-assisted review textures now populate it under a separate `candidate` source status. Default loaders continue rejecting candidates; only `ArtValidationScene` opts in. No production approval is fabricated, no protected reference assets are imported, and live Fernreach remains on its legacy artwork until visual sign-off and production cleanup. Pose playback is a limited study, with flattened character layers and incomplete action sets disclosed in the comparison report.

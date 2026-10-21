@@ -1,34 +1,55 @@
 import type { MoveInput } from '@cindervale/game-core';
 import type Phaser from 'phaser';
+import { actionForCode, DEFAULT_BINDINGS, type Action, type Keybindings } from './bindings';
 
 const NEUTRAL: MoveInput = { left: false, right: false, up: false, down: false, jump: false };
 
-/** Keyboard → MoveInput. Arrows + Space are primary; WASD and Alt are alternates. */
-export function createControls(scene: Phaser.Scene) {
-  const k = scene.input.keyboard!.addKeys({
-    left: 'LEFT',
-    right: 'RIGHT',
-    up: 'UP',
-    down: 'DOWN',
-    space: 'SPACE',
-    a: 'A',
-    d: 'D',
-    w: 'W',
-    s: 'S',
-    alt: 'ALT',
-  }) as Record<string, Phaser.Input.Keyboard.Key>;
-  const down = (...keys: string[]) => keys.some((name) => k[name]!.isDown);
-
+/** Physical key codes; combat is edge-triggered, movement remains fixed-step. */
+export function createControls(
+  scene: Phaser.Scene,
+  bindings: () => Keybindings = () => DEFAULT_BINDINGS,
+) {
+  const held = new Set<string>();
+  const pressed: Action[] = [];
+  const clear = () => {
+    held.clear();
+    pressed.length = 0;
+  };
+  const keydown = (event: KeyboardEvent) => {
+    const action = actionForCode(bindings(), event.code);
+    if (!action) return;
+    event.preventDefault();
+    if (!event.repeat && !held.has(event.code)) pressed.push(action);
+    held.add(event.code);
+  };
+  const keyup = (event: KeyboardEvent) => {
+    held.delete(event.code);
+  };
+  scene.input.keyboard!.on('keydown', keydown).on('keyup', keyup);
+  scene.game.events.on('blur', clear);
+  scene.events.once('shutdown', () => {
+    scene.input.keyboard!.off('keydown', keydown).off('keyup', keyup);
+    scene.game.events.off('blur', clear);
+  });
   return {
-    /** `enabled: false` (e.g. menu open) still yields an input so the simulation keeps stepping. */
+    clear,
+    actions(enabled: boolean) {
+      const result = enabled ? pressed.splice(0) : [];
+      pressed.length = 0;
+      return result;
+    },
     read(enabled: boolean): MoveInput {
-      if (!enabled) return NEUTRAL;
+      if (!enabled) {
+        clear();
+        return NEUTRAL;
+      }
+      const down = (a: Action) => bindings()[a].some((code) => held.has(code));
       return {
-        left: down('left', 'a'),
-        right: down('right', 'd'),
-        up: down('up', 'w'),
-        down: down('down', 's'),
-        jump: down('space', 'alt'),
+        left: down('left'),
+        right: down('right'),
+        up: down('up'),
+        down: down('down'),
+        jump: down('jump'),
       };
     },
   };

@@ -1,11 +1,12 @@
 // Browser-only entry: import dynamically from client components (Phaser touches `window`).
 import type { PlayerView } from '@cindervale/protocol';
-import Phaser from 'phaser';
 import { joinMap, type GameSession } from './network';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { WorldScene, type WorldHooks } from './scenes/WorldScene';
-import { VIEWPORT } from './viewport';
+import { combatEvents } from './combat/events';
+import { createPixelGame } from './pixelGame';
+import { cameraZoom } from './visuals/model';
 
 export type { GameSession } from './network';
 export type { WorldHooks } from './scenes/WorldScene';
@@ -17,23 +18,14 @@ export async function startGame(
   session: GameSession,
   hooks: WorldHooks,
 ): Promise<() => void> {
+  cameraZoom(hooks.cameraZoom ?? 1);
   const room = await joinMap(session);
   // The first full state lands asynchronously after the join resolves.
   if (!room.state?.players?.has(room.sessionId)) {
     await new Promise<void>((resolve) => room.onStateChange.once(() => resolve()));
   }
 
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent,
-    width: VIEWPORT.width,
-    height: VIEWPORT.height,
-    pixelArt: true,
-    roundPixels: true,
-    backgroundColor: '#000000',
-    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, PreloadScene, WorldScene],
-  });
+  const game = createPixelGame(parent, [BootScene, PreloadScene, WorldScene],{mixedFiltering:room.state.mapId==='fernreach-fields'});
   game.registry.set('room', room);
   game.registry.set('hooks', hooks);
 
@@ -46,11 +38,17 @@ export async function startGame(
       [...(room.state.players as Map<string, PlayerView>).values()].map(
         ({ name, x, y, climbing }) => ({ name, x, y, climbing }),
       ),
+    combat: () =>
+      game.scene.isActive('World')
+        ? (game.scene.getScene('World') as WorldScene).combatSnapshot()
+        : undefined,
   };
 
   return () => {
     delete debug.cindervale;
-    void room.leave();
+    game.scene.stop('World');
     game.destroy(true);
+    combatEvents.get(room)?.destroy();
+    void room.leave();
   };
 }

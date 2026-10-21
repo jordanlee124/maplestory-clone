@@ -1,5 +1,6 @@
 import type { MapDef } from '@cindervale/content';
 import type Phaser from 'phaser';
+import { assetByKey } from '../art/manifest';
 
 /** Deterministic pseudo-random in [0, 1) so decorations are stable across reloads. */
 const hash = (n: number) => {
@@ -37,8 +38,11 @@ export function renderMap(scene: Phaser.Scene, def: MapDef) {
     .setTint(theme.hillsNear);
 
   // Ladders sit behind platforms and poke a few pixels above the top they lead to.
+  const ladderOrigin = assetByKey('ladder').origin;
   for (const l of ladders) {
-    scene.add.tileSprite(l.x, l.top - 12, 16, l.bottom - l.top + 12, 'ladder').setOrigin(0.5, 0);
+    scene.add
+      .tileSprite(l.x, l.top - 12, 16, l.bottom - l.top + 12, 'ladder')
+      .setOrigin(ladderOrigin.x, ladderOrigin.y);
   }
 
   const groundY = Math.max(...platforms.map((p) => p.y));
@@ -51,9 +55,10 @@ export function renderMap(scene: Phaser.Scene, def: MapDef) {
       const r = hash(i * 1000 + x);
       if (r < 0.25) continue;
       const key = r < 0.55 ? 'grass-tuft' : r < 0.8 ? 'flower-pink' : 'flower-white';
+      const origin = assetByKey(key).origin;
       scene.add
         .image(Math.round(x + r * 12), p.y, key)
-        .setOrigin(0.5, 1)
+        .setOrigin(origin.x, origin.y)
         .setDepth(5);
     }
   });

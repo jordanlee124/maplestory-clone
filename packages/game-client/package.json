@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./bindings": "./src/input/bindings.ts",
+    "./art-preview": "./src/art/preview.ts",
+    "./art-validation": "./src/scenes/ArtValidationScene.ts"
   },
   "scripts": {
     "typecheck": "tsc",

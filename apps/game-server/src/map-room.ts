@@ -182,6 +182,9 @@ export function createMapRoom({
       if (!s) return;
       s.inputs = [];
       s.lastQueuedSeq = s.lastSeq;
+      // Reloaded clients have no owner snapshots even though their session survived.
+      client.send(ServerMessage.ExpGained, this.progress(s, 0));
+      void this.sendInventory(client, s.characterId);
     }
 
     override async onLeave(client: MapClient) {

@@ -2,7 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'e2e',
+  snapshotPathTemplate: '{testDir}/snapshots/{testFileName}/{arg}{ext}',
   timeout: 60_000,
+  // Scenarios share an authoritative map and software-rendered canvases; isolate them.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   use: { baseURL: 'http://localhost:3000', trace: 'retain-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

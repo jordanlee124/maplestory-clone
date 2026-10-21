@@ -115,10 +115,14 @@ async function join({
   const token = await signToken(account!.id, secret);
   const room = await connect(token, c!.id, mapId);
   open.push(room);
+  return { room, characterId: c!.id, token, got: watch(room) };
+}
+
+function watch(room: Room) {
   const inbox: Record<string, unknown[]> = {};
   room.onMessage('*', (type, payload) => (inbox[String(type)] ??= []).push(payload));
   const got = <T>(type: string) => (inbox[type] ?? []) as T[];
-  return { room, characterId: c!.id, token, got };
+  return got;
 }
 
 async function waitFor(check: () => boolean, ms = 4000) {
@@ -137,6 +141,63 @@ const attack = (room: Room, requestId: number, skillId = 'basic-attack', facing 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('combat in a map room', () => {
+  it('restores earned progression and inventory on reconnect without replaying rewards', async () => {
+    const a = await join({ level: 10, exp: expToNext(10, LEVELING) - 1 });
+    const b = await join({ dx: -400 });
+    await waitFor(() => monster(a.room, TWIG.id)?.hp === 40);
+    attack(a.room, 1);
+    await waitFor(() => a.got<ExpGained>(ServerMessage.ExpGained).some((e) => e.level === 11));
+    await waitFor(() => monster(b.room, TWIG.id)?.mode === 'dead');
+    const loot = drops(a.room).find((d) => d.itemId === '')!;
+    expect(loot).toBeDefined();
+    a.room.send(ClientMessage.Pickup, { dropId: loot.dropId });
+    await waitFor(() => a.got<Inventory>(ServerMessage.Inventory).some((i) => i.currency === 3));
+    const before = await conn.db.select().from(characters).where(eq(characters.id, a.characterId));
+    const ledgerBefore = await conn.db
+      .select()
+      .from(grantedRewards)
+      .where(eq(grantedRewards.characterId, a.characterId));
+
+    const reconnectToken = a.room.reconnectionToken;
+    a.room.reconnection.enabled = false;
+    a.room.connection.close(3000);
+    open.splice(open.indexOf(a.room), 1);
+    await delay(150);
+    const rejoined = await new Client(`ws://localhost:${PORT}`).reconnect(reconnectToken);
+    open.push(rejoined);
+    const got = watch(rejoined);
+    expect(rejoined.sessionId).toBe(a.room.sessionId);
+    await waitFor(() => got<ExpGained>(ServerMessage.ExpGained).length === 1);
+    expect(got<ExpGained>(ServerMessage.ExpGained)[0]).toMatchObject({
+      amount: 0,
+      level: 11,
+      exp: 3,
+    });
+    await waitFor(() => got<Inventory>(ServerMessage.Inventory).length === 1);
+    expect(got<Inventory>(ServerMessage.Inventory)[0]).toMatchObject({ currency: 3 });
+
+    rejoined.send(ClientMessage.Pickup, { dropId: loot.dropId });
+    await waitFor(() => got<PickupRejected>(ServerMessage.PickupRejected).length === 1);
+    expect(got<PickupRejected>(ServerMessage.PickupRejected)[0]!.reason).toBe('not_found');
+    await delay(550);
+    attack(rejoined, 1); // Replaying a request cannot pay a dead monster's rewards again.
+    await waitFor(() => got<AttackResult>(ServerMessage.AttackResult).length === 1);
+    expect(got<AttackResult>(ServerMessage.AttackResult)[0]!.hits).toEqual([]);
+    const after = await conn.db.select().from(characters).where(eq(characters.id, a.characterId));
+    expect(after[0]).toMatchObject({
+      level: before[0]!.level,
+      exp: before[0]!.exp,
+      currency: before[0]!.currency,
+    });
+    const ledgerAfter = await conn.db
+      .select()
+      .from(grantedRewards)
+      .where(eq(grantedRewards.characterId, a.characterId));
+    expect(ledgerAfter).toEqual(ledgerBefore);
+    expect(got(ServerMessage.ExpGained)).toHaveLength(1);
+    expect(b.got(ServerMessage.MonsterKilled)).toHaveLength(1);
+  });
+
   it('two players damage a monster, kill it, and both earn persisted EXP', async () => {
     const a = await join({ dx: -15 });
     const b = await join({ dx: -25 });
@@ -258,6 +319,46 @@ describe('combat in a map room', () => {
     a.room.send(ClientMessage.Pickup, { dropId: 'does-not-exist' });
     await waitFor(() => a.got(ServerMessage.PickupRejected).length === 1);
     a.room.send(ClientMessage.Respawn, {}); // not dead: silently ignored
+  });
+
+  it('ignores forged attack results and positions, and rejects a distant loot pickup', async () => {
+    const a = await join({ dx: -400 });
+    await waitFor(() => monster(a.room, TWIG.id)?.hp === 40);
+    a.room.send(ClientMessage.Attack, {
+      requestId: 1,
+      skillId: 'basic-attack',
+      facing: 'right',
+      x: TWIG.x - 15,
+      y: 640,
+      damage: 999999,
+      monsterId: TWIG.id,
+      hits: [{ monsterId: TWIG.id, damage: 999999, killed: true }],
+    });
+    await waitFor(() => a.got<AttackResult>(ServerMessage.AttackResult).length === 1);
+    expect(a.got<AttackResult>(ServerMessage.AttackResult)[0]!.hits).toEqual([]);
+    expect(monster(a.room, TWIG.id)?.hp).toBe(40);
+
+    const owner = await join({ level: 10 });
+    attack(owner.room, 1);
+    await waitFor(() => drops(a.room).length === 4);
+    const loot = drops(a.room)[0]!;
+    a.room.send(ClientMessage.Pickup, {
+      dropId: loot.dropId,
+      x: loot.x,
+      y: loot.y,
+      ownerId: a.characterId,
+    });
+    await waitFor(() => a.got<PickupRejected>(ServerMessage.PickupRejected).length === 1);
+    expect(a.got<PickupRejected>(ServerMessage.PickupRejected)[0]!.reason).toBe('out_of_range');
+    expect(drops(a.room).some((d) => d.dropId === loot.dropId)).toBe(true);
+    const rows = await conn.db.select().from(characters).where(eq(characters.id, a.characterId));
+    expect(rows[0]).toMatchObject({ x: TWIG.x - 400, exp: 0, currency: 0 });
+    expect(
+      await conn.db
+        .select()
+        .from(inventoryItems)
+        .where(eq(inventoryItems.characterId, a.characterId)),
+    ).toEqual([]);
   });
 
   it('disconnects a client that sends a malformed payload, and frees the character', async () => {

@@ -1,18 +1,6 @@
-// Placeholder adventurer, drawn procedurally until real art lands.
-export const ADVENTURER_FRAME = { width: 32, height: 48 } as const;
-export const ADVENTURER_FRAMES = [
-  'idle0',
-  'idle1',
-  'walk0',
-  'walk1',
-  'walk2',
-  'walk3',
-  'jump',
-  'fall',
-  'climb0',
-  'climb1',
-] as const;
-export type AdventurerFrame = (typeof ADVENTURER_FRAMES)[number];
+import { CHARACTER_FRAMES, SPRITE_CELL } from './manifest';
+// Temporary original art: the existing 32x48 drawing is padded, never rescaled.
+export type AdventurerFrame = (typeof CHARACTER_FRAMES)[number];
 export interface AdventurerPalette {
   tunic: string;
   tunicShade: string;
@@ -193,6 +181,14 @@ const POSES: Record<AdventurerFrame, Pose> = {
   },
   climb0: climb(10, 17),
   climb1: climb(17, 10),
+  attack0: { ...idle(0), front: [raised(21, 18, 'T')] },
+  attack1: { ...idle(0), front: [spread(1, 'T')] },
+  attack2: { ...idle(0), front: [hang(22, 2, 'T')] },
+  skill0: { ...idle(0), front: [raised(23, 10, 'T')] },
+  skill1: { ...idle(0), back: [spread(-1, 'S')], front: [spread(1, 'T')] },
+  skill2: { ...idle(0), front: [raised(22, 17, 'T')] },
+  hit: { ...idle(2), back: [spread(-1, 'S')], front: [raised(22, 20, 'T')] },
+  death: idle(0),
 };
 
 function blit(
@@ -214,16 +210,31 @@ function blit(
 }
 
 /**
- * Draws every frame left-to-right (frame i at x = i * 32, y = 0) into a canvas context
- * that is at least 320x48. Character faces RIGHT (the game flips it for left).
- * Feet rest on the bottom row, horizontally centered on x = 16 within each frame.
+ * One row of untrimmed 64x64 cells. The original 32x48 art sits at (16,16).
+ * Faces RIGHT; feet remain at (32,64) in every cell.
  */
 export function drawAdventurerSheet(
   ctx: CanvasRenderingContext2D,
   palette: AdventurerPalette,
 ): void {
-  ADVENTURER_FRAMES.forEach((name, i) => {
-    const ox = i * ADVENTURER_FRAME.width;
+  ctx.save();
+  ctx.translate(0, 16);
+  CHARACTER_FRAMES.forEach((name, i) => {
+    const ox = i * SPRITE_CELL.width + 16;
+    if (name === 'death') {
+      blit(
+        ctx,
+        ox,
+        0,
+        [
+          [3, 39, 10, 8, SKIN],
+          [13, 38, 10, 9, 'T'],
+          [23, 41, 7, 6, PANTS],
+        ],
+        palette,
+      );
+      return;
+    }
     const { dy, legs, back, front, rear = false } = POSES[name];
     for (const arm of back) blit(ctx, ox, dy, arm, palette);
     blit(ctx, ox, 0, leg(11, legs[0], PANTS_SHADE, BOOT_SHADE, rear), palette);
@@ -234,4 +245,5 @@ export function drawAdventurerSheet(
     blit(ctx, ox, dy, face(rear), palette, false);
     for (const arm of front) blit(ctx, ox, dy, arm, palette);
   });
+  ctx.restore();
 }

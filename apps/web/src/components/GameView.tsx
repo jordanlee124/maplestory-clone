@@ -3,6 +3,8 @@
 import { Button } from '@cindervale/ui';
 import { useEffect, useRef, useState } from 'react';
 import { GAME_URL } from '@/lib/api';
+import { DEFAULT_BINDINGS, type Keybindings } from '@cindervale/game-client/bindings';
+import { KeybindingSettings } from './KeybindingSettings';
 
 interface Props {
   token: string;
@@ -19,6 +21,13 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
     exit.current = onExit;
   });
   const [status, setStatus] = useState<'connecting' | 'playing' | string>('connecting');
+  const [bindings, setBindings] = useState<Keybindings>(DEFAULT_BINDINGS);
+  const bindingsRef = useRef(bindings);
+  const settingsOpen = useRef(false);
+  const updateBindings = (value: Keybindings) => {
+    bindingsRef.current = value;
+    setBindings(value);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +37,11 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
         startGame(
           container.current!,
           { gameUrl: GAME_URL, token, characterId, mapId },
-          { onExit: () => exit.current() },
+          {
+            onExit: () => exit.current(),
+            bindings: () => bindingsRef.current,
+            inputEnabled: () => !settingsOpen.current,
+          },
         ),
       )
       .then(
@@ -46,19 +59,34 @@ export function GameView({ token, characterId, mapId, onExit }: Props) {
   }, [token, characterId, mapId]);
 
   return (
-    <div className="flex w-full flex-col items-center gap-3">
+    <div className="flex w-screen flex-col items-center gap-3">
       <div
         ref={container}
         data-testid="game"
         data-status={status}
-        className="aspect-video w-full max-w-[1280px] overflow-hidden bg-black"
+        className="w-full overflow-auto bg-black"
       />
       {status !== 'playing' && (
         <p className="text-amber-100">{status === 'connecting' ? 'Connecting…' : status}</p>
       )}
       <p className="text-sm text-amber-100/80">
-        Move ← → · Jump Space · Climb ↑ ↓ · Menu Esc · Debug F3
+        Arrows: move/climb · Space: jump · Ctrl: attack · Q/W/E/R: skills · 1/2: potions (pending) ·
+        Z: loot · Enter: respawn · Esc: menu · F3: debug
       </p>
+      <p className="text-xs text-amber-100/60">
+        Temporary original pixel-art placeholders. One class skill is currently available in slot Q.{' '}
+        <a className="underline" href="/art-validation" target="_blank" rel="noreferrer">
+          Review the proposed art direction
+        </a>
+        .
+      </p>
+      <KeybindingSettings
+        bindings={bindings}
+        onChange={updateBindings}
+        onOpen={(open) => {
+          settingsOpen.current = open;
+        }}
+      />
       <Button onClick={onExit}>Exit to character select</Button>
     </div>
   );

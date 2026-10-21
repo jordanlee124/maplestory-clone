@@ -12,6 +12,10 @@ export class RemotePlayers {
     return this.avatars.size;
   }
 
+  get(sessionId: string) {
+    return this.avatars.get(sessionId);
+  }
+
   sync(players: Map<string, PlayerView>, mySessionId: string, delta: number) {
     // shortcut: exponential smoothing toward the latest snapshot; switch to a snapshot
     // interpolation buffer if remote movement looks jittery under real latency.
@@ -24,7 +28,7 @@ export class RemotePlayers {
         this.avatars.set(sessionId, avatar);
       }
       const { x, y } = avatar.sprite;
-      avatar.update(x + (p.x - x) * t, y + (p.y - y) * t, p);
+      avatar.update(x + (p.x - x) * t, y + (p.y - y) * t, p, p.dead);
     }
     for (const [sessionId, avatar] of this.avatars) {
       if (players.has(sessionId)) continue;

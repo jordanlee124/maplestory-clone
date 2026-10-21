@@ -15,16 +15,16 @@ export class Predictor {
     private readonly map: MapGeometry,
   ) {}
 
-  step(input: MoveInput): InputMessage {
+  step(input: MoveInput, predict = true): InputMessage {
     const msg: InputMessage = { seq: this.nextSeq++, ...input };
-    this.body = stepBody(this.body, input, this.map);
+    if (predict) this.body = stepBody(this.body, input, this.map);
     this.pending.push(msg);
     return msg;
   }
 
-  reconcile(server: Body, lastSeq: number) {
+  reconcile(server: Body, lastSeq: number, predict = true) {
     this.pending = this.pending.filter((p) => p.seq > lastSeq);
-    this.body = this.pending.reduce((b, p) => stepBody(b, p, this.map), {
+    this.body = (predict ? this.pending : []).reduce((b, p) => stepBody(b, p, this.map), {
       x: server.x,
       y: server.y,
       vx: server.vx,

@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION, ROOM_MAP } from '@cindervale/protocol';
 import { Client, type Room } from '@colyseus/sdk';
+import { CombatEvents, combatEvents } from './combat/events';
 
 export interface GameSession {
   gameUrl: string;
@@ -35,6 +36,9 @@ export async function joinMap({ gameUrl, token, characterId, mapId }: GameSessio
     }
   }
 
+  // The server reserves the seat even if the connection drops immediately after join.
+  room.reconnection.minUptime = 0;
+  combatEvents.set(room, new CombatEvents(room));
   const remember = () => sessionStorage.setItem(key, room.reconnectionToken);
   remember();
   room.onReconnect(remember);

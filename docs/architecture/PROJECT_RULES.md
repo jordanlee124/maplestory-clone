@@ -62,7 +62,7 @@ Run the gates relevant to your change before declaring it done. Never claim a mi
 ## Content and IP
 
 Original IP inspired by MapleStory-style gameplay. Never copy MapleStory assets, code, dialogue, characters, maps or names.
-Pixel art: chibi characters ~48–64 px tall, 16/32 px tiles, nearest-neighbour rendering, integer scaling only, transparent sprite sheets with consistent origins (bottom-centre = feet).
+Visual direction: expressive layered chibi actors, detailed organic side-scrolling scenery and authored combat effects; see `docs/art/ART_DIRECTION.md`. Choose actor dimensions and camera framing by viewport review, not a universal sprite-size limit. Use consistent per-frame feet/attachment pivots, crisp actor sampling and explicit per-texture filtering for painted scenery/soft FX. Legacy pixel placeholders retain integer display scaling; experimental camera zoom is reviewed separately. Original assets require recorded provenance and visual approval before production expansion.
 
 ## Token efficiency
 

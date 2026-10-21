@@ -78,15 +78,23 @@ Monster keys (`m0`, `m1`, …) are stable per map. A dead monster stays in the m
 
 - Network drop: the server keeps the seat for 20 s and `@colyseus/sdk` auto-reconnects.
 - Page reload: the client stores `room.reconnectionToken` in `sessionStorage` and calls `client.reconnect(token)`. On reconnect the server clears the input queue, and the client resumes `seq` from `lastSeq + 1`.
+- Reconnect resends the owner's `expGained` snapshot with `amount: 0` and current `inventory`. This restores the HUD without granting rewards again. Existing sessions retain their cooldowns and reward ownership.
+- The client enables SDK recovery immediately after joining, and stops movement transmission and local fixed-step accumulation while disconnected. It does not queue offline movement or combat for later replay. Dead players still sequence neutral inputs, but local prediction leaves their authoritative body frozen until respawn.
 - Final leave: x/y are saved to `characters` and the character is freed for a new join.
 
 ## Client integration (v3), owned by `game-client`
 
-The server side of combat is complete and tested. The client still needs to:
+Phase 1A consumes the existing v3 contract without changing backend rules or wire formats:
 
-1. **Render monsters** from `state.monsters` (sprite per `monsterId`, flip by `facing`, hide when `mode === 'dead'`, HP bar from `hp/maxHp`).
-2. **Render drops** from `state.drops`, and send `pickup` for the nearest drop on a key (e.g. Z).
-3. **Send `attack`** on a key (e.g. Ctrl for `basic-attack`, plus a skill hotkey per class: `flame-cleave`, `gust-arrow`, `rune-burst`, `twin-thorn`) with the current facing. Play the swing immediately, and show damage numbers from `attackResult`.
-4. Show HP/MP/level from the local `PlayerState`, EXP from `expGained`, inventory and currency from `inventory`.
-5. React to `playerHit` (flash, damage number), `playerDied` (death UI with a respawn button that sends `respawn`), `levelUp` (effect), `itemPickedUp`, `lootSpawned`, `monsterKilled`.
-6. Skill data (range, cooldown, MP) is in `@cindervale/content` `SKILLS`, for cooldown UI. The server remains authoritative.
+1. **Monsters:** original temporary pixel sprites for all three content types, feet-aligned to their hurt boxes; movement, HP, defeat and respawn follow synced state. Hit/attack reactions follow confirmed events.
+2. **Commands:** Ctrl sends `basic-attack`; Q/W/E/R are skill slots (currently only Q has a class skill); Z requests the nearest drop; Enter requests respawn while dead. All bindings can be changed for the current play session through the web host's Keybindings panel. W is reserved for skills, so climbing uses arrows.
+3. **Presentation:** local swings start immediately, with 90/100/160 ms startup/active/recovery frames and a 180 ms attack input buffer. These windows are cosmetic: the server validates attacks immediately on receipt. Damage numbers, crits, hit reactions, defeat effects, remote actions and rewards use server events/state only.
+4. **HUD:** HP/MP/level use synced player state; EXP and currency use owner snapshots captured before Phaser starts. Cooldowns are conservative local estimates from content, reconciled on acceptance/rejection. RTT uses the SDK's built-in `room.ping`, with no custom ping message.
+5. **Lifecycle:** menus, settings, death and disconnect suppress combat commands; scene shutdown detaches room listeners. Drops render from synced state. Inventory snapshots are retained, but there is no inventory screen in this phase.
+
+Remaining integration requirements:
+
+- **Consumables:** keys 1/2 and potion slots are visibly unavailable because v3 has no use-item command. Add a typed, validated request and authoritative server handler before enabling use; never apply healing locally.
+- **More skills:** W/E/R remain empty until content supplies additional skills for a class. Existing class skills can be moved to another physical key through remapping.
+- **Monster windups:** v3 exposes monster locomotion/death modes and landed `playerHit` events, but no attack-start or windup event. The client shows a short attack pose on confirmed contact; accurate telegraphs and missed attacks require an authoritative event/state extension.
+- **Final art:** sprites remain clearly marked temporary placeholders. Phase 1.5 replaces fractional FIT scaling with integer display steps; asset contracts and missing art are documented in `docs/art/PIXEL_ART_GUIDE.md`.
