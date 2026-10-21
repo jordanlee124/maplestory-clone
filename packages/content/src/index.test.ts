@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BASIC_ATTACK_ID,
   CLASS_IDS,
-  CLASS_STATS,
+  ADVANCEMENT_LEVELS,
+  CLASS_SCALING,
   CLASSES,
   DROP_TABLES,
   ITEMS,
@@ -68,7 +69,35 @@ describe('content', () => {
     for (const skill of Object.values(SKILLS)) {
       expect(skill.classId === null || skill.classId in CLASSES).toBe(true);
     }
-    for (const id of CLASS_IDS) expect(CLASS_STATS[id]).toBeDefined();
+    for (const id of CLASS_IDS) expect(CLASS_SCALING[id]).toBeDefined();
     expect(SKILLS[BASIC_ATTACK_ID]?.classId).toBeNull();
+  });
+});
+
+describe('skills', () => {
+  const skills = Object.values(SKILLS);
+
+  it('give every class an innate attack, a passive, a buff and a learnable attack', () => {
+    for (const id of CLASS_IDS) {
+      const own = skills.filter((s) => s.classId === id);
+      expect(own.some((s) => s.kind === 'attack' && s.innate)).toBe(true);
+      expect(own.some((s) => s.kind === 'attack' && !s.innate)).toBe(true);
+      expect(own.some((s) => s.kind === 'passive')).toBe(true);
+      expect(own.some((s) => s.kind === 'buff')).toBe(true);
+    }
+  });
+
+  it('have consistent unlock requirements', () => {
+    for (const s of skills) {
+      expect(s.id in SKILLS && SKILLS[s.id] === s).toBe(true);
+      expect(s.maxLevel).toBeGreaterThanOrEqual(1);
+      if (s.stage > 0)
+        expect(s.requiredLevel).toBeGreaterThanOrEqual(ADVANCEMENT_LEVELS[s.stage - 1]!);
+      if (s.requires) {
+        const pre = SKILLS[s.requires.skillId];
+        expect(pre?.classId).toBe(s.classId);
+        expect(s.requires.level).toBeLessThanOrEqual(pre!.maxLevel);
+      }
+    }
   });
 });

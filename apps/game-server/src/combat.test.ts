@@ -1,8 +1,8 @@
-import { COMBAT, LOOT, MAPS, SKILLS } from '@cindervale/content';
+import { COMBAT, LOOT, MAPS, SKILLS, type AttackSkillDef } from '@cindervale/content';
 import { describe, expect, it } from 'vitest';
 import { monsterHitsPlayer, resolveAttack, validatePickup, type Drop } from './combat';
 import { spawnMonsters, type Monster } from './monsters';
-import { createSession, type Session } from './session';
+import { createSession, expireBuffs, type Session } from './session';
 
 const rng = () => 0.5; // no crits (0.5 ≥ critRate), variance exactly 1.0
 const map = MAPS['fernreach-fields']!;
@@ -33,7 +33,7 @@ describe('resolveAttack', () => {
     expect(twig.hp).toBe(twig.def.hp - 12);
     expect(twig.damageBy.get('c1')).toBe(12);
     expect(twig.ai).toMatchObject({ mode: 'chase', targetId: 's1' });
-    expect(twig.ai.x).toBe(520 + SKILLS['basic-attack']!.knockback);
+    expect(twig.ai.x).toBe(520 + (SKILLS['basic-attack'] as AttackSkillDef).knockback);
   });
 
   it('misses targets behind the player or out of range (but still spends the swing)', () => {
@@ -124,7 +124,64 @@ describe('resolveAttack', () => {
     }));
     s.mp = 999;
     const r = resolveAttack(s, attack('rune-burst'), crowd, NOW, rng);
-    expect(r.ok && r.hits.length).toBe(SKILLS['rune-burst']!.maxTargets);
+    expect(r.ok && r.hits.length).toBe((SKILLS['rune-burst'] as AttackSkillDef).maxTargets);
+  });
+});
+
+describe('skills in combat', () => {
+  it('rejects a learnable skill until it is learned, and passives always', () => {
+    const { s, monsters } = setup('runewaver', 10);
+    expect(resolveAttack(s, attack('glyph-lance'), monsters, NOW, rng)).toEqual({
+      ok: false,
+      reason: 'skill_not_owned',
+    });
+    s.skills.set('runic-insight', 1);
+    expect(resolveAttack(s, attack('runic-insight'), monsters, NOW, rng)).toEqual({
+      ok: false,
+      reason: 'not_usable',
+    });
+  });
+
+  it('scales damage with skill level', () => {
+    const { s, twig, monsters } = setup('runewaver', 1);
+    s.mp = 999;
+    const at1 = resolveAttack(s, attack('rune-burst'), monsters, NOW, rng);
+    twig.hp = twig.def.hp;
+    s.skills.set('rune-burst', 5);
+    const at5 = resolveAttack(s, attack('rune-burst'), monsters, NOW + 60_000, rng);
+    // magic 13 × (2.2 | 2.2 + 4 × 0.12) × 100/102
+    expect(at1.ok && at1.hits[0]!.damage).toBe(28);
+    expect(at5.ok && at5.hits[0]!.damage).toBe(34);
+  });
+
+  it('applies a buff to stats without hitting, and refreshes on recast', () => {
+    const { s, monsters } = setup('ember-knight', 5);
+    s.skills.set('kindled-will', 3);
+    s.mp = 999;
+    const before = s.stats.attack;
+    expect(resolveAttack(s, attack('kindled-will'), monsters, NOW, rng)).toEqual({
+      ok: true,
+      hits: [],
+    });
+    expect(s.stats.attack).toBe(before + 4 + 2);
+    expect(s.buffs.get('kindled-will')).toEqual({ level: 3, until: NOW + 120_000 });
+    resolveAttack(s, attack('kindled-will'), monsters, NOW + 5000, rng);
+    expect(s.buffs.get('kindled-will')!.until).toBe(NOW + 125_000);
+    expect(s.stats.attack).toBe(before + 6);
+  });
+
+  it('expires buffs on time, restoring stats and capping vitals', () => {
+    const { s, monsters } = setup('runewaver', 5);
+    s.skills.set('mana-weave', 1);
+    const base = s.stats.magic;
+    resolveAttack(s, attack('mana-weave'), monsters, NOW, rng);
+    expect(s.stats.magic).toBe(base + 5);
+    const until = NOW + 120_000;
+    expect(expireBuffs(s, until - 1)).toBe(false);
+    expect(expireBuffs(s, until)).toBe(true);
+    expect(s.buffs.size).toBe(0);
+    expect(s.stats.magic).toBe(base);
+    expect(s.mp).toBeLessThanOrEqual(s.stats.maxMp);
   });
 });
 

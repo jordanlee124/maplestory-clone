@@ -2,6 +2,7 @@
 import type { MapGeometry, MonsterBehavior } from '@cindervale/game-core';
 
 export * from './balance';
+export type { StatBonus, Stats } from '@cindervale/game-core';
 
 export interface RegionDef {
   id: string;
@@ -39,6 +40,8 @@ export interface MonsterDef {
   /** Hurt box, feet-aligned. */
   size: { width: number; height: number };
   behavior: MonsterBehavior;
+  /** Boss damage applies against it. */
+  boss?: boolean;
   dropTableId: string;
   regionId: string;
 }

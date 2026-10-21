@@ -9,12 +9,12 @@ import {
   rollDrops,
   seededRng,
   splitExp,
-  statsForLevel,
+  type Attacker,
+  deriveStats,
 } from './combat';
-import type { DamageConfig, ExpCurve } from './rules';
+import type { ClassScaling, DamageConfig, ExpCurve, StatFormula, Stats } from './rules';
 
 const config: DamageConfig = {
-  critMultiplier: 1.5,
   variance: { min: 0.9, max: 1.1 },
   defenseConstant: 100,
   minDamage: 1,
@@ -23,41 +23,62 @@ const fixed = (...values: number[]) => {
   let i = 0;
   return () => values[i++ % values.length]!;
 };
+const hitter = (power: number, extra: Partial<Attacker> = {}): Attacker => ({
+  power,
+  critRate: 0,
+  critDamage: 0.5,
+  bossDamage: 0,
+  ignoreDefense: 0,
+  ...extra,
+});
 
 describe('rollDamage', () => {
-  it('applies attack × multiplier × defense modifier × variance', () => {
+  it('applies power × multiplier × defense modifier × variance', () => {
     // no crit (0.99 >= 0.1), variance 0.9 + 0.5 * 0.2 = 1.0, defense 100 → ×0.5
-    expect(rollDamage(100, 2, 0.1, 100, config, fixed(0.99, 0.5))).toEqual({
-      damage: 100,
-      crit: false,
-    });
+    expect(
+      rollDamage(hitter(100, { critRate: 0.1 }), 2, { defense: 100 }, config, fixed(0.99, 0.5)),
+    ).toEqual({ damage: 100, crit: false });
   });
 
-  it('applies the critical modifier', () => {
-    expect(rollDamage(100, 1, 0.1, 0, config, fixed(0.05, 0.5))).toEqual({
-      damage: 150,
-      crit: true,
-    });
+  it('applies critical damage', () => {
+    expect(
+      rollDamage(hitter(100, { critRate: 0.1 }), 1, { defense: 0 }, config, fixed(0.05, 0.5)),
+    ).toEqual({ damage: 150, crit: true });
+  });
+
+  it('applies boss damage only against bosses', () => {
+    const a = hitter(100, { bossDamage: 0.3 });
+    expect(rollDamage(a, 1, { defense: 0, boss: true }, config, fixed(0.99, 0.5)).damage).toBe(130);
+    expect(rollDamage(a, 1, { defense: 0 }, config, fixed(0.99, 0.5)).damage).toBe(100);
+  });
+
+  it('ignores a share of the target defense', () => {
+    // defense 200 × (1 − 0.5) = 100 → ×0.5
+    const a = hitter(100, { ignoreDefense: 0.5 });
+    expect(rollDamage(a, 1, { defense: 200 }, config, fixed(0.99, 0.5)).damage).toBe(50);
   });
 
   it('stays within variance bounds and never drops below the minimum', () => {
     const rng = seededRng(7);
     for (let i = 0; i < 1000; i++) {
-      const { damage } = rollDamage(50, 1, 0, 0, config, rng);
+      const { damage } = rollDamage(hitter(50), 1, { defense: 0 }, config, rng);
       expect(damage).toBeGreaterThanOrEqual(45);
       expect(damage).toBeLessThanOrEqual(55);
     }
-    expect(rollDamage(1, 0.1, 0, 10_000, config, seededRng(1)).damage).toBe(1);
+    expect(rollDamage(hitter(1), 0.1, { defense: 10_000 }, config, seededRng(1)).damage).toBe(1);
   });
 
   it('treats negative defense as zero', () => {
-    expect(rollDamage(100, 1, 0, -500, config, fixed(0.99, 0.5)).damage).toBe(100);
+    expect(rollDamage(hitter(100), 1, { defense: -500 }, config, fixed(0.99, 0.5)).damage).toBe(
+      100,
+    );
   });
 
   it('is deterministic for a given seed', () => {
     const run = () => {
       const rng = seededRng(42);
-      return Array.from({ length: 20 }, () => rollDamage(30, 1.4, 0.2, 10, config, rng));
+      const a = hitter(30, { critRate: 0.2 });
+      return Array.from({ length: 20 }, () => rollDamage(a, 1.4, { defense: 10 }, config, rng));
     };
     expect(run()).toEqual(run());
   });
@@ -65,20 +86,55 @@ describe('rollDamage', () => {
 
 describe('progression', () => {
   const curve: ExpCurve = { base: 10, exponent: 1, maxLevel: 5 };
+  const zero: Stats = {
+    str: 0,
+    dex: 0,
+    int: 0,
+    luk: 0,
+    maxHp: 0,
+    maxMp: 0,
+    attack: 0,
+    magic: 0,
+    defense: 0,
+    critRate: 0,
+    critDamage: 0,
+    bossDamage: 0,
+    ignoreDefense: 0,
+  };
+  const knight: ClassScaling = {
+    primary: 'str',
+    secondary: 'dex',
+    damageType: 'physical',
+    base: { ...zero, str: 10, dex: 4, maxHp: 50, attack: 2, critRate: 0.1, critDamage: 0.5 },
+    perLevel: { str: 5, dex: 1, maxHp: 10, maxMp: 2.5 },
+  };
+  const formula: StatFormula = { powerPerPrimary: 0.5, powerPerSecondary: 0.25 };
 
-  it('grows stats per level', () => {
-    const growth = {
-      base: { maxHp: 50, maxMp: 10, attack: 10, defense: 5, critRate: 0.1 },
-      perLevel: { maxHp: 10, maxMp: 2.5, attack: 3, defense: 1 },
-    };
-    expect(statsForLevel(growth, 1)).toEqual(growth.base);
-    expect(statsForLevel(growth, 3)).toEqual({
+  it('grows stats per level and derives power from the primary and secondary stats', () => {
+    // L1: attack 2 + 10×0.5 + 4×0.25 = 8
+    expect(deriveStats(knight, formula, 1)).toMatchObject({ str: 10, dex: 4, attack: 8, magic: 0 });
+    // L3: str 20, dex 6, maxMp 5 → attack 2 + 10 + 1.5 = 13.5 → 13
+    expect(deriveStats(knight, formula, 3)).toMatchObject({
+      str: 20,
+      dex: 6,
       maxHp: 70,
-      maxMp: 15,
-      attack: 16,
-      defense: 7,
+      maxMp: 5,
+      attack: 13,
       critRate: 0.1,
     });
+  });
+
+  it('routes power to magic for magic classes', () => {
+    const mage: ClassScaling = { ...knight, primary: 'int', damageType: 'magic' };
+    expect(deriveStats(mage, formula, 1)).toMatchObject({ attack: 2, magic: 1 });
+  });
+
+  it('adds bonuses, including primary-stat bonuses into power, and clamps rates', () => {
+    const s = deriveStats(knight, formula, 1, [
+      { str: 4, attack: 3 },
+      { critRate: 2, ignoreDefense: 0.3 },
+    ]);
+    expect(s).toMatchObject({ str: 14, attack: 13, critRate: 1, ignoreDefense: 0.3 });
   });
 
   it('computes the EXP requirement and caps at max level', () => {

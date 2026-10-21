@@ -1,6 +1,6 @@
 // Typed, validated, versioned contracts between web client, API, and game server.
 // See docs/protocols/NETWORK_PROTOCOL.md. Bump PROTOCOL_VERSION on any breaking change.
-import { CLASS_IDS } from '@cindervale/content';
+import { CLASS_IDS, type Stats } from '@cindervale/content';
 import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 3;
@@ -48,6 +48,7 @@ export const ClientMessage = {
   Attack: 'attack',
   Pickup: 'pickup',
   Respawn: 'respawn',
+  LearnSkill: 'learnSkill',
 } as const;
 
 /** One fixed simulation step of input. `seq` increases by 1 per step. */
@@ -109,6 +110,16 @@ export type PickupRequest = z.infer<typeof PickupRequest>;
 /** Respawn after death; no payload. */
 export const RespawnRequest = z.object({}).strict();
 
+/**
+ * Spend one skill point raising `skillId` to `level` (its current level + 1). Naming the target
+ * level makes a resent request a no-op instead of a second level.
+ */
+export const LearnSkillRequest = z.object({
+  skillId: z.string().min(1).max(64),
+  level: z.number().int().min(1).max(100),
+});
+export type LearnSkillRequest = z.infer<typeof LearnSkillRequest>;
+
 export const ServerMessage = {
   AttackResult: 'attackResult',
   AttackRejected: 'attackRejected',
@@ -122,6 +133,8 @@ export const ServerMessage = {
   ExpGained: 'expGained',
   LevelUp: 'levelUp',
   Inventory: 'inventory',
+  CharacterStats: 'characterStats',
+  SkillRejected: 'skillRejected',
 } as const;
 
 export type AttackRejectReason =
@@ -130,7 +143,21 @@ export type AttackRejectReason =
   | 'invalid_state'
   | 'too_fast'
   | 'cooldown'
-  | 'insufficient_mp';
+  | 'insufficient_mp'
+  /** Passive skills can't be used. */
+  | 'not_usable';
+
+export type SkillRejectReason =
+  | 'unknown_skill'
+  | 'wrong_class'
+  | 'level_too_low'
+  | 'prerequisite'
+  | 'max_level'
+  | 'no_skill_points'
+  /** `level` isn't current + 1 (usually a resent request). */
+  | 'stale'
+  | 'busy'
+  | 'error';
 
 export type PickupRejectReason =
   'not_found' | 'invalid_state' | 'out_of_range' | 'not_owner' | 'inventory_full' | 'error';
@@ -197,6 +224,22 @@ export interface Inventory {
   currency: number;
   capacity: number;
   items: { slot: number; itemId: string; quantity: number }[];
+}
+
+/**
+ * To the owner only: sent on join/reconnect and whenever stats, skills or buffs change.
+ * `skills` lists effective levels (innate skills report at least 1).
+ */
+export interface CharacterStats {
+  stats: Stats;
+  skillPoints: number;
+  skills: { skillId: string; level: number }[];
+  buffs: { skillId: string; remainingMs: number }[];
+}
+/** To the requester only. */
+export interface SkillRejected {
+  skillId: string;
+  reason: SkillRejectReason;
 }
 
 /** Synced monster state (MapState.monsters, keyed by monster id). */

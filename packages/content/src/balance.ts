@@ -1,9 +1,15 @@
 // Balance values: combat, progression, skills, items, drops. The server reads only these.
-import type { DamageConfig, ExpCurve, StatGrowth } from '@cindervale/game-core';
+import type {
+  ClassScaling,
+  DamageConfig,
+  ExpCurve,
+  StatBonus,
+  StatFormula,
+  Stats,
+} from '@cindervale/game-core';
 
 export const COMBAT = {
   damage: {
-    critMultiplier: 1.5,
     variance: { min: 0.9, max: 1.1 },
     defenseConstant: 100,
     minDamage: 1,
@@ -21,6 +27,14 @@ export const COMBAT = {
 
 export const LEVELING: ExpCurve = { base: 15, exponent: 1.6, maxLevel: 200 };
 
+/** Skill points earned per level gained. */
+export const PROGRESSION = { skillPointsPerLevel: 3 } as const;
+
+/** Level at which each advancement stage opens: stage N needs ADVANCEMENT_LEVELS[N - 1]. */
+export const ADVANCEMENT_LEVELS = [1, 30, 60, 100] as const;
+
+export const STAT_FORMULA: StatFormula = { powerPerPrimary: 0.5, powerPerSecondary: 0.25 };
+
 export const LOOT = {
   inventoryCapacity: 24,
   pickupRange: { x: 50, y: 50 },
@@ -33,34 +47,93 @@ export const LOOT = {
 
 export const CURRENCY_NAME = 'Cinders';
 
-export const CLASS_STATS: Record<string, StatGrowth> = {
+const BASE_STATS: Stats = {
+  str: 4,
+  dex: 4,
+  int: 4,
+  luk: 4,
+  maxHp: 0,
+  maxMp: 0,
+  attack: 0,
+  magic: 0,
+  defense: 0,
+  critRate: 0.05,
+  critDamage: 0.5,
+  bossDamage: 0,
+  ignoreDefense: 0,
+};
+
+export const CLASS_SCALING: Record<string, ClassScaling> = {
   'ember-knight': {
-    base: { maxHp: 60, maxMp: 10, attack: 12, defense: 6, critRate: 0.05 },
-    perLevel: { maxHp: 12, maxMp: 3, attack: 3, defense: 2 },
+    primary: 'str',
+    secondary: 'dex',
+    damageType: 'physical',
+    base: { ...BASE_STATS, str: 12, dex: 5, maxHp: 60, maxMp: 10, attack: 5, defense: 6 },
+    perLevel: { str: 5, dex: 1, maxHp: 12, maxMp: 3, defense: 2 },
   },
   'gale-ranger': {
-    base: { maxHp: 45, maxMp: 15, attack: 11, defense: 4, critRate: 0.1 },
-    perLevel: { maxHp: 9, maxMp: 4, attack: 3, defense: 1.5 },
+    primary: 'dex',
+    secondary: 'str',
+    damageType: 'physical',
+    base: {
+      ...BASE_STATS,
+      dex: 12,
+      str: 5,
+      maxHp: 45,
+      maxMp: 15,
+      attack: 4,
+      defense: 4,
+      critRate: 0.1,
+    },
+    perLevel: { dex: 5, str: 1, maxHp: 9, maxMp: 4, defense: 1.5 },
   },
   runewaver: {
-    base: { maxHp: 40, maxMp: 30, attack: 13, defense: 3, critRate: 0.05 },
-    perLevel: { maxHp: 7, maxMp: 8, attack: 3.5, defense: 1 },
+    primary: 'int',
+    secondary: 'luk',
+    damageType: 'magic',
+    base: { ...BASE_STATS, int: 12, luk: 5, maxHp: 40, maxMp: 30, magic: 6, defense: 3 },
+    perLevel: { int: 5, luk: 1, maxHp: 7, maxMp: 8, defense: 1 },
   },
   thornblade: {
-    base: { maxHp: 48, maxMp: 15, attack: 11, defense: 4, critRate: 0.15 },
-    perLevel: { maxHp: 10, maxMp: 4, attack: 3, defense: 1.5 },
+    primary: 'luk',
+    secondary: 'dex',
+    damageType: 'physical',
+    base: {
+      ...BASE_STATS,
+      luk: 12,
+      dex: 5,
+      maxHp: 48,
+      maxMp: 15,
+      attack: 4,
+      defense: 4,
+      critRate: 0.15,
+    },
+    perLevel: { luk: 5, dex: 1, maxHp: 10, maxMp: 4, defense: 1.5 },
   },
 };
 
-export interface SkillDef {
+interface SkillCommon {
   id: string;
   name: string;
   /** null = every class. */
   classId: string | null;
+  /** Advancement stage it belongs to; 0 = shared by every class. */
+  stage: number;
   requiredLevel: number;
-  multiplier: number;
+  /** Another skill that must reach this level first. */
+  requires?: { skillId: string; level: number };
+  maxLevel: number;
+  /** Known at level 1 without spending skill points. */
+  innate?: boolean;
   mpCost: number;
   cooldownMs: number;
+}
+
+export interface AttackSkillDef extends SkillCommon {
+  kind: 'attack';
+  multiplier: number;
+  /** Added to the multiplier per skill level above 1. */
+  multiplierPerLevel: number;
   /** Hit area in front of the player, feet-aligned. */
   range: { width: number; height: number };
   maxTargets: number;
@@ -68,68 +141,289 @@ export interface SkillDef {
   knockback: number;
 }
 
+/** Bonus at skill level L = bonus + bonusPerLevel × (L − 1). */
+export interface BuffSkillDef extends SkillCommon {
+  kind: 'buff';
+  durationMs: number;
+  bonus: StatBonus;
+  bonusPerLevel: StatBonus;
+}
+
+export interface PassiveSkillDef extends SkillCommon {
+  kind: 'passive';
+  bonus: StatBonus;
+  bonusPerLevel: StatBonus;
+}
+
+export type SkillDef = AttackSkillDef | BuffSkillDef | PassiveSkillDef;
+
 export const BASIC_ATTACK_ID = 'basic-attack';
 
 export const SKILLS: Record<string, SkillDef> = {
   'basic-attack': {
     id: 'basic-attack',
     name: 'Strike',
+    kind: 'attack',
     classId: null,
+    stage: 0,
     requiredLevel: 1,
+    maxLevel: 1,
+    innate: true,
     multiplier: 1,
+    multiplierPerLevel: 0,
     mpCost: 0,
     cooldownMs: 500,
     range: { width: 80, height: 60 },
     maxTargets: 1,
     knockback: 12,
   },
+  // ---- Ember Knight ----
   'flame-cleave': {
     id: 'flame-cleave',
     name: 'Flame Cleave',
+    kind: 'attack',
     classId: 'ember-knight',
+    stage: 1,
     requiredLevel: 1,
+    maxLevel: 10,
+    innate: true,
     multiplier: 1.8,
+    multiplierPerLevel: 0.1,
     mpCost: 6,
     cooldownMs: 1500,
     range: { width: 110, height: 70 },
     maxTargets: 3,
     knockback: 24,
   },
+  'ashen-hide': {
+    id: 'ashen-hide',
+    name: 'Ashen Hide',
+    kind: 'passive',
+    classId: 'ember-knight',
+    stage: 1,
+    requiredLevel: 2,
+    maxLevel: 10,
+    mpCost: 0,
+    cooldownMs: 0,
+    bonus: { maxHp: 10, defense: 2 },
+    bonusPerLevel: { maxHp: 10, defense: 2 },
+  },
+  'kindled-will': {
+    id: 'kindled-will',
+    name: 'Kindled Will',
+    kind: 'buff',
+    classId: 'ember-knight',
+    stage: 1,
+    requiredLevel: 3,
+    maxLevel: 10,
+    mpCost: 12,
+    cooldownMs: 1000,
+    durationMs: 120_000,
+    bonus: { attack: 4 },
+    bonusPerLevel: { attack: 1 },
+  },
+  'ember-crash': {
+    id: 'ember-crash',
+    name: 'Ember Crash',
+    kind: 'attack',
+    classId: 'ember-knight',
+    stage: 1,
+    requiredLevel: 5,
+    requires: { skillId: 'flame-cleave', level: 3 },
+    maxLevel: 10,
+    multiplier: 2.6,
+    multiplierPerLevel: 0.15,
+    mpCost: 14,
+    cooldownMs: 4000,
+    range: { width: 140, height: 80 },
+    maxTargets: 5,
+    knockback: 30,
+  },
+  // ---- Gale Ranger ----
   'gust-arrow': {
     id: 'gust-arrow',
     name: 'Gust Arrow',
+    kind: 'attack',
     classId: 'gale-ranger',
+    stage: 1,
     requiredLevel: 1,
+    maxLevel: 10,
+    innate: true,
     multiplier: 1.5,
+    multiplierPerLevel: 0.08,
     mpCost: 5,
     cooldownMs: 1000,
     range: { width: 360, height: 50 },
     maxTargets: 1,
     knockback: 16,
   },
+  'fletchers-focus': {
+    id: 'fletchers-focus',
+    name: "Fletcher's Focus",
+    kind: 'passive',
+    classId: 'gale-ranger',
+    stage: 1,
+    requiredLevel: 2,
+    maxLevel: 10,
+    mpCost: 0,
+    cooldownMs: 0,
+    bonus: { dex: 2, critDamage: 0.05 },
+    bonusPerLevel: { dex: 2, critDamage: 0.02 },
+  },
+  'keen-eye': {
+    id: 'keen-eye',
+    name: 'Keen Eye',
+    kind: 'buff',
+    classId: 'gale-ranger',
+    stage: 1,
+    requiredLevel: 3,
+    maxLevel: 10,
+    mpCost: 10,
+    cooldownMs: 1000,
+    durationMs: 120_000,
+    bonus: { critRate: 0.05 },
+    bonusPerLevel: { critRate: 0.01 },
+  },
+  'tailwind-volley': {
+    id: 'tailwind-volley',
+    name: 'Tailwind Volley',
+    kind: 'attack',
+    classId: 'gale-ranger',
+    stage: 1,
+    requiredLevel: 5,
+    requires: { skillId: 'gust-arrow', level: 3 },
+    maxLevel: 10,
+    multiplier: 1.2,
+    multiplierPerLevel: 0.06,
+    mpCost: 12,
+    cooldownMs: 3000,
+    range: { width: 400, height: 70 },
+    maxTargets: 4,
+    knockback: 20,
+  },
+  // ---- Runewaver ----
   'rune-burst': {
     id: 'rune-burst',
     name: 'Rune Burst',
+    kind: 'attack',
     classId: 'runewaver',
+    stage: 1,
     requiredLevel: 1,
+    maxLevel: 10,
+    innate: true,
     multiplier: 2.2,
+    multiplierPerLevel: 0.12,
     mpCost: 10,
     cooldownMs: 2000,
     range: { width: 200, height: 120 },
     maxTargets: 4,
     knockback: 10,
   },
+  'runic-insight': {
+    id: 'runic-insight',
+    name: 'Runic Insight',
+    kind: 'passive',
+    classId: 'runewaver',
+    stage: 1,
+    requiredLevel: 2,
+    maxLevel: 10,
+    mpCost: 0,
+    cooldownMs: 0,
+    bonus: { int: 3, maxMp: 15, bossDamage: 0.05 },
+    bonusPerLevel: { int: 2, maxMp: 10, bossDamage: 0.01 },
+  },
+  'mana-weave': {
+    id: 'mana-weave',
+    name: 'Mana Weave',
+    kind: 'buff',
+    classId: 'runewaver',
+    stage: 1,
+    requiredLevel: 3,
+    maxLevel: 10,
+    mpCost: 15,
+    cooldownMs: 1000,
+    durationMs: 120_000,
+    bonus: { magic: 5 },
+    bonusPerLevel: { magic: 1 },
+  },
+  'glyph-lance': {
+    id: 'glyph-lance',
+    name: 'Glyph Lance',
+    kind: 'attack',
+    classId: 'runewaver',
+    stage: 1,
+    requiredLevel: 5,
+    requires: { skillId: 'rune-burst', level: 3 },
+    maxLevel: 10,
+    multiplier: 3.4,
+    multiplierPerLevel: 0.2,
+    mpCost: 18,
+    cooldownMs: 4500,
+    range: { width: 300, height: 60 },
+    maxTargets: 1,
+    knockback: 18,
+  },
+  // ---- Thornblade ----
   'twin-thorn': {
     id: 'twin-thorn',
     name: 'Twin Thorn',
+    kind: 'attack',
     classId: 'thornblade',
+    stage: 1,
     requiredLevel: 1,
+    maxLevel: 10,
+    innate: true,
     multiplier: 1.4,
+    multiplierPerLevel: 0.08,
     mpCost: 5,
     cooldownMs: 800,
     range: { width: 90, height: 60 },
     maxTargets: 2,
     knockback: 8,
+  },
+  'venom-edge': {
+    id: 'venom-edge',
+    name: 'Venom Edge',
+    kind: 'passive',
+    classId: 'thornblade',
+    stage: 1,
+    requiredLevel: 2,
+    maxLevel: 10,
+    mpCost: 0,
+    cooldownMs: 0,
+    bonus: { luk: 2, ignoreDefense: 0.05 },
+    bonusPerLevel: { luk: 2, ignoreDefense: 0.02 },
+  },
+  'nightshade-focus': {
+    id: 'nightshade-focus',
+    name: 'Nightshade Focus',
+    kind: 'buff',
+    classId: 'thornblade',
+    stage: 1,
+    requiredLevel: 3,
+    maxLevel: 10,
+    mpCost: 10,
+    cooldownMs: 1000,
+    durationMs: 120_000,
+    bonus: { attack: 3, critRate: 0.03 },
+    bonusPerLevel: { attack: 1, critRate: 0.005 },
+  },
+  'bramble-flurry': {
+    id: 'bramble-flurry',
+    name: 'Bramble Flurry',
+    kind: 'attack',
+    classId: 'thornblade',
+    stage: 1,
+    requiredLevel: 5,
+    requires: { skillId: 'twin-thorn', level: 3 },
+    maxLevel: 10,
+    multiplier: 2.4,
+    multiplierPerLevel: 0.12,
+    mpCost: 12,
+    cooldownMs: 2500,
+    range: { width: 120, height: 70 },
+    maxTargets: 4,
+    knockback: 10,
   },
 };
 

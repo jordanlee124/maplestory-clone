@@ -5,6 +5,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -59,6 +60,19 @@ export const inventoryItems = pgTable(
     quantity: integer().notNull(),
   },
   (t) => [uniqueIndex('inventory_items_slot_idx').on(t.characterId, t.slot)],
+);
+
+/** Learned skill levels. Innate skills have no row until raised past level 1. */
+export const characterSkills = pgTable(
+  'character_skills',
+  {
+    characterId: uuid()
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    skillId: text().notNull(),
+    level: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.characterId, t.skillId] })],
 );
 
 /**

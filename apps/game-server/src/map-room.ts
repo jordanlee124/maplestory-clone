@@ -16,11 +16,13 @@ import {
   ClientMessage,
   InputMessage,
   JoinOptions,
+  LearnSkillRequest,
   PickupRequest,
   RespawnRequest,
   ServerMessage,
   type AttackRejected,
   type AttackResult,
+  type CharacterStats,
   type DropView,
   type ExpGained,
   type ItemPickedUp,
@@ -30,13 +32,22 @@ import {
   type PickupRejected,
   type PickupRejectReason,
   type PlayerHit,
+  type SkillRejected,
 } from '@cindervale/protocol';
 import { verifyToken } from '@cindervale/protocol/token';
 import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
 import { monsterHitsPlayer, resolveAttack, validatePickup, type Drop } from './combat';
 import { resetMonsterLife, spawnMonsters, topDamager, type Monster } from './monsters';
 import { grantExp, grantLoot, loadInventory } from './rewards';
-import { applyProgress, createSession, type Session } from './session';
+import {
+  checkLearn,
+  classSkills,
+  learnSkill,
+  loadSkills,
+  skillDef,
+  skillPoints,
+} from './progression';
+import { applyProgress, createSession, expireBuffs, refreshStats, type Session } from './session';
 import { DropState, MapState, MonsterState, PlayerState } from './state';
 
 export interface MapRoomDeps {
@@ -54,7 +65,7 @@ const MAX_QUEUED_INPUTS = 30;
 /** Step credits a player can bank to absorb network jitter. */
 const MAX_STEP_CREDITS = 10;
 
-type MapClient = Client<{ auth: Character }>;
+type MapClient = Client<{ auth: Character & { skills: Map<string, number> } }>;
 
 /**
  * Builds the authoritative map room. A factory so deps are injected without globals.
@@ -123,6 +134,9 @@ export function createMapRoom({
         void this.handlePickup(client, req.dropId);
       });
       this.onMessage(ClientMessage.Respawn, RespawnRequest, (client) => this.handleRespawn(client));
+      this.onMessage(ClientMessage.LearnSkill, LearnSkillRequest, (client, req) => {
+        void this.handleLearnSkill(client, req);
+      });
 
       this.setTimestep((deltaMs) => this.tick(deltaMs), 1000 / TICK_RATE);
     }
@@ -148,7 +162,7 @@ export function createMapRoom({
         throw new ServerError(400, 'Character is on another map');
       if (activeCharacters.has(character.id))
         throw new ServerError(409, 'Character is already in game');
-      return character;
+      return { ...character, skills: await loadSkills(db, character.id) };
     }
 
     override onJoin(client: MapClient) {
@@ -168,6 +182,7 @@ export function createMapRoom({
       this.syncPlayer(s, p);
 
       client.send(ServerMessage.ExpGained, this.progress(s, 0));
+      this.sendStats(s);
       void this.sendInventory(client, c.id);
     }
 
@@ -182,6 +197,7 @@ export function createMapRoom({
       if (!s) return;
       s.inputs = [];
       s.lastQueuedSeq = s.lastSeq;
+      this.sendStats(s);
     }
 
     override async onLeave(client: MapClient) {
@@ -228,7 +244,36 @@ export function createMapRoom({
           killed: h.killed,
         })),
       } satisfies AttackResult);
+      if (skillDef(req.skillId)?.kind === 'buff') this.sendStats(s);
       for (const h of outcome.hits) if (h.killed) this.onMonsterKilled(h.monster, s.sessionId);
+    }
+
+    private async handleLearnSkill(client: MapClient, req: LearnSkillRequest) {
+      const s = this.sessions.get(client.sessionId);
+      if (!s) return;
+      const reject = (reason: SkillRejected['reason']) =>
+        client.send(ServerMessage.SkillRejected, {
+          skillId: req.skillId,
+          reason,
+        } satisfies SkillRejected);
+      if (s.learnPending) return reject('busy');
+      // Cheap pre-check so junk requests never reach the DB. The session never runs ahead of
+      // the DB, so this can only reject early; the transaction re-checks as the authority.
+      const early = checkLearn(s.classId, s.level, s.skills, req.skillId, req.level);
+      if (early) return reject(early);
+      s.learnPending = true;
+      try {
+        const result = await learnSkill(db, s.characterId, req.skillId, req.level);
+        if (!result.ok) return reject(result.reason);
+        s.skills = result.learned;
+        refreshStats(s);
+        this.sendStats(s);
+      } catch (err) {
+        console.error(`Learning ${req.skillId} for ${s.characterId} failed`, err);
+        reject('error');
+      } finally {
+        s.learnPending = false;
+      }
     }
 
     private async handlePickup(client: MapClient, dropId: string) {
@@ -334,6 +379,7 @@ export function createMapRoom({
         const leveled = applyProgress(s, result.level, result.exp);
         this.clients.getById(s.sessionId)?.send(ServerMessage.ExpGained, this.progress(s, amount));
         if (leveled) {
+          this.sendStats(s);
           this.broadcast(ServerMessage.LevelUp, {
             sessionId: s.sessionId,
             level: s.level,
@@ -348,6 +394,17 @@ export function createMapRoom({
       const next = expToNext(s.level, LEVELING);
       // 0 = max level (Infinity doesn't serialize).
       return { amount, level: s.level, exp: s.exp, expToNext: Number.isFinite(next) ? next : 0 };
+    }
+
+    /** Stats, skill levels, skill points and buffs, to the owner. */
+    private sendStats(s: Session) {
+      const t = now();
+      this.clients.getById(s.sessionId)?.send(ServerMessage.CharacterStats, {
+        stats: s.stats,
+        skillPoints: skillPoints(s.level, s.skills),
+        skills: classSkills(s.classId, s.skills),
+        buffs: [...s.buffs].map(([skillId, b]) => ({ skillId, remainingMs: b.until - t })),
+      } satisfies CharacterStats);
     }
 
     private async sendInventory(client: MapClient, characterId: string) {
@@ -387,6 +444,11 @@ export function createMapRoom({
       this.tickMonsters(t, deltaMs);
       this.tickDrops(t);
       this.tickRegen(deltaMs);
+      this.tickBuffs(t);
+    }
+
+    private tickBuffs(t: number) {
+      for (const s of this.sessions.values()) if (expireBuffs(s, t)) this.sendStats(s);
     }
 
     private tickMonsters(t: number, deltaMs: number) {
@@ -429,7 +491,14 @@ export function createMapRoom({
         damage: hit.damage,
         hp: s.hp,
       } satisfies PlayerHit);
-      if (hit.died) this.broadcast(ServerMessage.PlayerDied, { sessionId: s.sessionId });
+      if (!hit.died) return;
+      this.broadcast(ServerMessage.PlayerDied, { sessionId: s.sessionId });
+      // Buffs end on death, as they do on leave.
+      if (s.buffs.size > 0) {
+        s.buffs.clear();
+        refreshStats(s);
+        this.sendStats(s);
+      }
     }
 
     private tickDrops(t: number) {

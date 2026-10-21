@@ -1,5 +1,14 @@
 import { PHYSICS, type Body } from './index';
-import type { DamageConfig, ExpCurve, Rect, Rng, Stats } from './rules';
+import type {
+  ClassScaling,
+  DamageConfig,
+  ExpCurve,
+  Rect,
+  Rng,
+  StatBonus,
+  StatFormula,
+  Stats,
+} from './rules';
 
 /** Small, fast, seedable PRNG (mulberry32). */
 export function seededRng(seed: number): Rng {
@@ -18,43 +27,80 @@ export interface DamageRoll {
   crit: boolean;
 }
 
+/** The attacking side of a damage roll; monsters use 0 for the stats they lack. */
+export interface Attacker {
+  /** Attack or magic, whichever the attacker's class uses. */
+  power: number;
+  critRate: number;
+  critDamage: number;
+  bossDamage: number;
+  ignoreDefense: number;
+}
+
+export interface Defender {
+  defense: number;
+  boss?: boolean;
+}
+
 /**
- * Damage = AttackPower × SkillMultiplier × CriticalModifier × DefenseModifier × RandomVariance,
+ * Damage = Power × SkillMultiplier × (1 + CritDamage on a crit) × (1 + BossDamage vs bosses)
+ *        × k / (k + Defense × (1 − IgnoreDefense)) × RandomVariance,
  * rounded down, at least `minDamage`. Consumes exactly two rng values (crit, variance).
  */
 export function rollDamage(
-  attack: number,
+  a: Attacker,
   multiplier: number,
-  critRate: number,
-  defense: number,
+  target: Defender,
   config: DamageConfig,
   rng: Rng,
 ): DamageRoll {
-  const crit = rng() < critRate;
-  const critMod = crit ? config.critMultiplier : 1;
-  const defenseMod = config.defenseConstant / (config.defenseConstant + Math.max(0, defense));
+  const crit = rng() < a.critRate;
+  const critMod = crit ? 1 + a.critDamage : 1;
+  const bossMod = target.boss ? 1 + a.bossDamage : 1;
+  const defense = Math.max(0, target.defense) * (1 - a.ignoreDefense);
+  const defenseMod = config.defenseConstant / (config.defenseConstant + defense);
   const { min, max } = config.variance;
   const variance = min + rng() * (max - min);
-  const raw = attack * multiplier * critMod * defenseMod * variance;
+  const raw = a.power * multiplier * critMod * bossMod * defenseMod * variance;
   return { damage: Math.max(config.minDamage, Math.floor(raw)), crit };
 }
 
-export interface StatGrowth {
-  base: Stats;
-  /** Added per level above 1 (critRate is not scaled). */
-  perLevel: Omit<Stats, 'critRate'>;
+const INTEGER_STATS = ['str', 'dex', 'int', 'luk', 'maxHp', 'maxMp', 'attack', 'magic', 'defense'];
+const RATE_STATS = ['critRate', 'ignoreDefense'] as const;
+
+/**
+ * A class's stats at `level`: base + perLevel × (level − 1) + bonuses, then the class's
+ * primary/secondary stats add to attack (physical) or magic. Bonuses to primary stats
+ * therefore raise power too.
+ */
+export function deriveStats(
+  cls: ClassScaling,
+  formula: StatFormula,
+  level: number,
+  bonuses: readonly StatBonus[] = [],
+): Stats {
+  const s = { ...cls.base };
+  const keys = Object.keys(s) as (keyof Stats)[];
+  for (const k of keys) {
+    s[k] += (cls.perLevel[k] ?? 0) * (level - 1);
+    for (const b of bonuses) s[k] += b[k] ?? 0;
+  }
+  const power =
+    s[cls.primary] * formula.powerPerPrimary + s[cls.secondary] * formula.powerPerSecondary;
+  s[cls.damageType === 'magic' ? 'magic' : 'attack'] += power;
+  for (const k of INTEGER_STATS) s[k as keyof Stats] = Math.floor(s[k as keyof Stats]);
+  for (const k of RATE_STATS) s[k] = Math.min(1, Math.max(0, s[k]));
+  return s;
 }
 
-export function statsForLevel({ base, perLevel }: StatGrowth, level: number): Stats {
-  const n = level - 1;
-  return {
-    maxHp: Math.floor(base.maxHp + perLevel.maxHp * n),
-    maxMp: Math.floor(base.maxMp + perLevel.maxMp * n),
-    attack: Math.floor(base.attack + perLevel.attack * n),
-    defense: Math.floor(base.defense + perLevel.defense * n),
-    critRate: base.critRate,
-  };
-}
+/** The stats a player's hits use. */
+export const attackerOf = (s: Stats, damageType: ClassScaling['damageType']): Attacker => ({
+  power: damageType === 'magic' ? s.magic : s.attack,
+  critRate: s.critRate,
+  critDamage: s.critDamage,
+  bossDamage: s.bossDamage,
+  ignoreDefense: s.ignoreDefense,
+});
 
 /** EXP needed to advance from `level` to `level + 1`; Infinity at the cap. */
 export function expToNext(level: number, curve: ExpCurve): number {

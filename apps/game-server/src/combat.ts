@@ -1,8 +1,9 @@
 // Authoritative combat rules. Pure apart from mutating the passed session/monsters; no IO.
-import { COMBAT, LOOT, SKILLS } from '@cindervale/content';
+import { COMBAT, LOOT } from '@cindervale/content';
 import {
   aggroMonster,
   attackBox,
+  attackerOf,
   hurtBox,
   killMonster,
   rectsOverlap,
@@ -11,7 +12,8 @@ import {
 } from '@cindervale/game-core';
 import type { AttackRejectReason, AttackRequest, PickupRejectReason } from '@cindervale/protocol';
 import type { Monster } from './monsters';
-import type { Session } from './session';
+import { classScaling, multiplierAt, skillDef, skillLevel } from './progression';
+import { refreshStats, type Session } from './session';
 
 export interface Hit {
   monster: Monster;
@@ -33,11 +35,17 @@ export function resolveAttack(
   now: number,
   rng: Rng,
 ): AttackOutcome {
-  const skill = Object.hasOwn(SKILLS, req.skillId) ? SKILLS[req.skillId] : undefined;
+  const skill = skillDef(req.skillId);
   if (!skill) return { ok: false, reason: 'unknown_skill' };
-  if ((skill.classId !== null && skill.classId !== s.classId) || s.level < skill.requiredLevel) {
+  const level = skillLevel(s.skills, skill);
+  if (
+    (skill.classId !== null && skill.classId !== s.classId) ||
+    level < 1 ||
+    s.level < skill.requiredLevel
+  ) {
     return { ok: false, reason: 'skill_not_owned' };
   }
+  if (skill.kind === 'passive') return { ok: false, reason: 'not_usable' };
   if (s.dead || s.body.climbing) return { ok: false, reason: 'invalid_state' };
   if (now < s.nextAttackAt) return { ok: false, reason: 'too_fast' };
   if (now < (s.cooldowns.get(skill.id) ?? 0)) return { ok: false, reason: 'cooldown' };
@@ -48,6 +56,13 @@ export function resolveAttack(
   s.cooldowns.set(skill.id, now + skill.cooldownMs);
   s.facing = req.facing === 'left' ? -1 : 1;
 
+  if (skill.kind === 'buff') {
+    // Recasting refreshes the duration.
+    s.buffs.set(skill.id, { level, until: now + skill.durationMs });
+    refreshStats(s);
+    return { ok: true, hits: [] };
+  }
+
   // shortcut: no lag compensation; hits test the server's current positions. Rewind
   // monster positions by the client's latency if melee feels unfair at high ping.
   const box = attackBox(s.body, s.facing, skill.range);
@@ -56,15 +71,10 @@ export function resolveAttack(
     .sort((a, b) => Math.abs(a.ai.x - s.body.x) - Math.abs(b.ai.x - s.body.x))
     .slice(0, skill.maxTargets);
 
+  const attacker = attackerOf(s.stats, classScaling(s.classId).damageType);
+  const multiplier = multiplierAt(skill, level);
   const hits = targets.map((m): Hit => {
-    const { damage, crit } = rollDamage(
-      s.stats.attack,
-      skill.multiplier,
-      s.stats.critRate,
-      m.def.defense,
-      COMBAT.damage,
-      rng,
-    );
+    const { damage, crit } = rollDamage(attacker, multiplier, m.def, COMBAT.damage, rng);
     const dealt = Math.min(damage, m.hp);
     m.hp -= dealt;
     m.damageBy.set(s.characterId, (m.damageBy.get(s.characterId) ?? 0) + dealt);
@@ -89,7 +99,13 @@ export function monsterHitsPlayer(
   mapWidth: number,
 ): { damage: number; died: boolean } | null {
   if (s.dead || now < s.invulnUntil) return null;
-  const { damage } = rollDamage(m.def.attack, 1, 0, s.stats.defense, COMBAT.damage, rng);
+  const { damage } = rollDamage(
+    { power: m.def.attack, critRate: 0, critDamage: 0, bossDamage: 0, ignoreDefense: 0 },
+    1,
+    s.stats,
+    COMBAT.damage,
+    rng,
+  );
   s.hp = Math.max(0, s.hp - damage);
   s.invulnUntil = now + COMBAT.hitInvulnMs;
   // Knock the player away from the monster (and off any ladder).

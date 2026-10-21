@@ -17,6 +17,7 @@ import {
   ServerMessage,
   type AttackRejected,
   type AttackResult,
+  type CharacterStats,
   type DropView,
   type ExpGained,
   type Inventory,
@@ -24,6 +25,7 @@ import {
   type LevelUp,
   type MonsterView,
   type PickupRejected,
+  type SkillRejected,
 } from '@cindervale/protocol';
 import { signToken } from '@cindervale/protocol/token';
 import { Server } from '@colyseus/core';
@@ -315,5 +317,53 @@ describe('combat in a map room', () => {
     await waitFor(() => respawned);
     await waitFor(() => me()?.dead === false);
     expect(me()!.hp).toBe(me()!.maxHp);
+  });
+
+  it('learns skills with skill points, applies passives and buffs, and keeps them on rejoin', async () => {
+    const a = await join({ level: 5, dx: -400 });
+    const stats = () => a.got<CharacterStats>(ServerMessage.CharacterStats);
+    await waitFor(() => stats().length === 1);
+    const first = stats()[0]!;
+    expect(first.skillPoints).toBe(12);
+    expect(first.skills).toContainEqual({ skillId: 'rune-burst', level: 1 });
+    expect(first.skills).toContainEqual({ skillId: 'runic-insight', level: 0 });
+
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'runic-insight', level: 1 });
+    await waitFor(() => stats().length === 2);
+    expect(stats()[1]!.skillPoints).toBe(11);
+    expect(stats()[1]!.stats.maxMp).toBe(first.stats.maxMp + 15);
+
+    const rejected = () => a.got<SkillRejected>(ServerMessage.SkillRejected).map((r) => r.reason);
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'runic-insight', level: 1 }); // resent
+    await waitFor(() => rejected().length === 1);
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'flame-cleave', level: 2 });
+    await waitFor(() => rejected().length === 2);
+    expect(rejected()).toEqual(['stale', 'wrong_class']);
+
+    attack(a.room, 1, 'mana-weave'); // not learned yet
+    await waitFor(() => a.got<AttackRejected>(ServerMessage.AttackRejected).length === 1);
+    expect(a.got<AttackRejected>(ServerMessage.AttackRejected)[0]!.reason).toBe('skill_not_owned');
+
+    a.room.send(ClientMessage.LearnSkill, { skillId: 'mana-weave', level: 1 });
+    await waitFor(() => stats().length === 3);
+    attack(a.room, 2, 'mana-weave');
+    await waitFor(() => stats().length === 4);
+    expect(stats()[3]!.buffs).toEqual([
+      { skillId: 'mana-weave', remainingMs: expect.closeTo(120_000, -3) },
+    ]);
+    expect(stats()[3]!.stats.magic).toBe(stats()[2]!.stats.magic + 5);
+
+    await a.room.leave();
+    open.splice(open.indexOf(a.room), 1);
+    await delay(200); // let the leave-save free the character
+    const rejoined = await connect(a.token, a.characterId);
+    open.push(rejoined);
+    const snapshot = await new Promise<CharacterStats>((r) =>
+      rejoined.onMessage(ServerMessage.CharacterStats, r),
+    );
+    expect(snapshot.skills).toContainEqual({ skillId: 'runic-insight', level: 1 });
+    expect(snapshot.skills).toContainEqual({ skillId: 'mana-weave', level: 1 });
+    expect(snapshot.skillPoints).toBe(10);
+    expect(snapshot.buffs).toEqual([]); // buffs end with the session
   });
 });
