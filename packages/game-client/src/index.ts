@@ -25,7 +25,9 @@ export async function startGame(
     await new Promise<void>((resolve) => room.onStateChange.once(() => resolve()));
   }
 
-  const game = createPixelGame(parent, [BootScene, PreloadScene, WorldScene],{mixedFiltering:room.state.mapId==='fernreach-fields'});
+  const game = createPixelGame(parent, [BootScene, PreloadScene, WorldScene], {
+    mixedFiltering: room.state.mapId === 'fernreach-fields',
+  });
   game.registry.set('room', room);
   game.registry.set('hooks', hooks);
 

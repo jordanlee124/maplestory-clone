@@ -12,6 +12,11 @@ import {
   type LootSpawned,
   type ItemPickedUp,
   type PickupRejected,
+  type CharacterStats,
+  type SkillRejected,
+  type ItemRejected,
+  type EnhanceResult,
+  type AutoGrindStatus,
 } from '@cindervale/protocol';
 import type { Room } from '@colyseus/sdk';
 
@@ -28,6 +33,11 @@ export interface CombatMessages {
   lootSpawned: LootSpawned;
   itemPickedUp: ItemPickedUp;
   pickupRejected: PickupRejected;
+  characterStats: CharacterStats;
+  skillRejected: SkillRejected;
+  itemRejected: ItemRejected;
+  enhanceResult: EnhanceResult;
+  autoGrind: AutoGrindStatus;
 }
 export type CombatEvent = {
   [K in keyof CombatMessages]: { type: K; data: CombatMessages[K] };
@@ -37,6 +47,7 @@ export type CombatEvent = {
 export class CombatEvents {
   exp?: ExpGained;
   inventory?: Inventory;
+  stats?: CharacterStats;
   private listeners = new Set<(event: CombatEvent) => void>();
   private dispose: (() => void)[];
 
@@ -45,6 +56,7 @@ export class CombatEvents {
       room.onMessage(type, (data: CombatMessages[typeof type]) => {
         if (type === 'expGained') this.exp = data as ExpGained;
         if (type === 'inventory') this.inventory = data as Inventory;
+        if (type === 'characterStats') this.stats = data as CharacterStats;
         const event = { type, data } as CombatEvent;
         for (const listener of this.listeners) listener(event);
       }),

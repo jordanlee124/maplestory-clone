@@ -87,6 +87,21 @@ describe('combat commands and cooldowns', () => {
     expect(c.skills.map((s) => s.id)).toEqual(['flame-cleave']);
   });
 
+  it('fills slots with learned attack and buff skills, never passives', () => {
+    const c = new CombatController('ember-knight');
+    c.setLearned([
+      { skillId: 'flame-cleave', level: 2 },
+      { skillId: 'ashen-hide', level: 3 },
+      { skillId: 'kindled-will', level: 1 },
+      { skillId: 'ember-crash', level: 0 },
+    ]);
+    expect(c.skills.map((s) => s.id)).toEqual(['flame-cleave', 'kindled-will']);
+    c.queue('ember-crash', 0); // not learned
+    expect(c.next(0, 'right', true)).toBeUndefined();
+    c.queue('kindled-will', 0);
+    expect(c.next(0, 'right', true)).toMatchObject({ skillId: 'kindled-will' });
+  });
+
   it('ignores stale replies and retains a conservative timer after server cooldown rejection', () => {
     const c = new CombatController('ember-knight');
     c.queue('basic-attack', 0);

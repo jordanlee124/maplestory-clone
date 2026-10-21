@@ -74,6 +74,7 @@ export class WorldScene extends Phaser.Scene {
     this.others = new RemotePlayers(this);
     this.combat = new CombatController(mine.classId);
     this.eventsFeed = combatEvents.get(this.room)!;
+    if (this.eventsFeed.stats) this.combat.setLearned(this.eventsFeed.stats.skills);
     this.effects = new CombatEffects(this);
     this.monsters = new Monsters(this, this.effects);
     this.drops = new Drops(this);
@@ -280,6 +281,9 @@ export class WorldScene extends Phaser.Scene {
         break;
       case 'pickupRejected':
         this.hud.message(`Pickup: ${event.data.reason.replaceAll('_', ' ')}`);
+        break;
+      case 'characterStats':
+        this.combat.setLearned(event.data.skills);
         break;
     }
   }

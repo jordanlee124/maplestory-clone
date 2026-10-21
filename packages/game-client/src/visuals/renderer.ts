@@ -53,7 +53,9 @@ export class LayeredActor {
   private action = 'idle';
   private started = 0;
   private layers: { def: ActorLayer; sprite: Phaser.GameObjects.Sprite }[];
-  get sprite() {return this.layers[0]!.sprite;}
+  get sprite() {
+    return this.layers[0]!.sprite;
+  }
   constructor(
     private scene: Phaser.Scene,
     readonly body: VisualAsset,

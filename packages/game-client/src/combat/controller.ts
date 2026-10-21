@@ -5,7 +5,9 @@ export const INPUT_BUFFER_MS = 180;
 
 /** Local pacing and display only. Never computes hits, HP, MP, EXP or rewards. */
 export class CombatController {
-  readonly skills;
+  private readonly classSkills;
+  /** Server-reported skill levels; until the first snapshot, innate skills count as level 1. */
+  private learned = new Map<string, number>();
   private queued?: { skillId: string; expires: number };
   private cooldowns = new Map<string, number>();
   private pending = new Map<number, AttackRequest>();
@@ -14,7 +16,20 @@ export class CombatController {
   private lockedUntil = 0;
 
   constructor(classId: string) {
-    this.skills = Object.values(SKILLS).filter((s) => s.classId === classId);
+    // Passives are never sent; they only show in a skill window.
+    this.classSkills = Object.values(SKILLS).filter(
+      (s) => s.classId === classId && s.kind !== 'passive',
+    );
+  }
+
+  /** Slot skills: this class's attack and buff skills that are learned. */
+  get skills() {
+    return this.classSkills.filter((s) => (this.learned.get(s.id) ?? (s.innate ? 1 : 0)) > 0);
+  }
+
+  /** Applies `characterStats.skills` (effective levels from the server). */
+  setLearned(skills: readonly { skillId: string; level: number }[]) {
+    this.learned = new Map(skills.map((s) => [s.skillId, s.level]));
   }
 
   queue(skillId: string, now: number) {
