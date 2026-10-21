@@ -31,7 +31,7 @@ Each view owns one Phaser game. Teardown destroys actors, listeners, effects and
 
 ## Layer contract
 
-The root body supplies feet pivots and head/hand anchors. Pose-following body/face/eyes/hair/outfit/equipment/weapon/accessory exports use the same action time; independent blink/sway clips may use their own clocks. `ActorLayer.depth` and each `actionDepth` value accept a number or `{ left, right }`. Origins, anchors and scale mirror around the same feet root. Skill effects use their own finite timeline and texture filtering. Both local and remote players use `Avatar` and the same renderer.
+The root body supplies feet pivots and head/hand anchors. Pose-following body/face/eyes/hair/outfit/equipment/weapon/accessory exports share normalized action time, allowing different frame counts and clip durations; independent blink/sway clips retain their own clocks across action changes. `ActorLayer.depth` and each `actionDepth` value accept a number or `{ left, right }`. Origins, anchors and scale mirror around the same feet root. Skill effects use their own finite timeline and texture filtering. Both local and remote players use `Avatar` and the same renderer. See [CHARACTER_ASSETS.md](CHARACTER_ASSETS.md) for appearance slots, offsets, overlap rules, preview controls and missing artwork.
 
 The approved adventurer PNG is still flattened. Do not claim its equipment is independently animated until clean matching layer exports and authoritative appearance IDs are supplied.
 

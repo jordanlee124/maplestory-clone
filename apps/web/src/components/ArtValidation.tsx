@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { startArtValidation } from '@cindervale/game-client/art-validation';
+import CharacterCustomization from './CharacterCustomization';
+import { CHARACTER_ACTIONS } from '@cindervale/game-client/appearance';
 
 export default function ArtValidation() {
   const parent = useRef<HTMLDivElement>(null);
@@ -65,8 +67,11 @@ export default function ArtValidation() {
             onChange={(e) => controls.current?.action(e.target.value)}
             className="bg-slate-800 p-2"
           >
-            {['idle', 'attack', 'skill'].map((a) => (
-              <option key={a}>{a}</option>
+            {CHARACTER_ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+                {['idle', 'attack', 'skill'].includes(a) ? '' : ' · development placeholder'}
+              </option>
             ))}
           </select>
         </label>
@@ -120,6 +125,9 @@ export default function ArtValidation() {
           />
         </label>
       </div>
+      {process.env.NODE_ENV !== 'production' && (
+        <CharacterCustomization ready={ready} controls={() => controls.current} />
+      )}
       {error && <p role="alert">{error}</p>}
       <div ref={parent} data-testid="art-validation" className="w-full overflow-auto bg-black" />
       <p className="p-3">
