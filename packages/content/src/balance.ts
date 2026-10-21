@@ -433,16 +433,49 @@ export interface ItemDef {
   kind: 'etc' | 'consumable' | 'equip';
   /** Max per inventory slot. */
   stackSize: number;
+  /** Consumables: restored on use. */
+  use?: { hp?: number; mp?: number };
 }
+
+/** Minimum gap between two item uses. */
+export const ITEM_USE_COOLDOWN_MS = 500;
+
+const equip = (id: string, name: string): ItemDef => ({ id, name, kind: 'equip', stackSize: 1 });
 
 export const ITEMS: Record<string, ItemDef> = {
   'twig-bundle': { id: 'twig-bundle', name: 'Twig Bundle', kind: 'etc', stackSize: 100 },
   'fern-frond': { id: 'fern-frond', name: 'Fern Frond', kind: 'etc', stackSize: 100 },
   'pond-gel': { id: 'pond-gel', name: 'Pond Gel', kind: 'etc', stackSize: 100 },
   'crystal-shard': { id: 'crystal-shard', name: 'Crystal Shard', kind: 'etc', stackSize: 100 },
-  'ember-tonic': { id: 'ember-tonic', name: 'Ember Tonic', kind: 'consumable', stackSize: 50 },
-  'dew-tonic': { id: 'dew-tonic', name: 'Dew Tonic', kind: 'consumable', stackSize: 50 },
-  'sprout-cap': { id: 'sprout-cap', name: 'Sprout Cap', kind: 'equip', stackSize: 1 },
+  'ember-tonic': {
+    id: 'ember-tonic',
+    name: 'Ember Tonic',
+    kind: 'consumable',
+    stackSize: 50,
+    use: { hp: 50 },
+  },
+  'dew-tonic': {
+    id: 'dew-tonic',
+    name: 'Dew Tonic',
+    kind: 'consumable',
+    stackSize: 50,
+    use: { mp: 30 },
+  },
+  'sprout-cap': equip('sprout-cap', 'Sprout Cap'),
+  'ember-brand': equip('ember-brand', 'Ember Brand'),
+  'gale-shortbow': equip('gale-shortbow', 'Gale Shortbow'),
+  'runewood-staff': equip('runewood-staff', 'Runewood Staff'),
+  'thorn-daggers': equip('thorn-daggers', 'Thorn Daggers'),
+  'fernweave-tunic': equip('fernweave-tunic', 'Fernweave Tunic'),
+  'fernweave-leggings': equip('fernweave-leggings', 'Fernweave Leggings'),
+  'fernweave-boots': equip('fernweave-boots', 'Fernweave Boots'),
+  'reedgrip-gloves': equip('reedgrip-gloves', 'Reedgrip Gloves'),
+  'dew-cape': equip('dew-cape', 'Dew Cape'),
+  'cinder-ring': equip('cinder-ring', 'Cinder Ring'),
+  'frond-pendant': equip('frond-pendant', 'Frond Pendant'),
+  'twine-belt': equip('twine-belt', 'Twine Belt'),
+  'bark-pauldrons': equip('bark-pauldrons', 'Bark Pauldrons'),
+  'crystal-band': equip('crystal-band', 'Crystal Band'),
 };
 
 export interface DropTable {
@@ -456,6 +489,11 @@ export const DROP_TABLES: Record<string, DropTable> = {
       { itemId: 'twig-bundle', chance: 0.6, min: 1, max: 2 },
       { itemId: 'ember-tonic', chance: 0.08, min: 1, max: 1 },
       { itemId: 'sprout-cap', chance: 0.02, min: 1, max: 1 },
+      { itemId: 'reedgrip-gloves', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'ember-brand', chance: 0.01, min: 1, max: 1 },
+      { itemId: 'gale-shortbow', chance: 0.01, min: 1, max: 1 },
+      { itemId: 'runewood-staff', chance: 0.01, min: 1, max: 1 },
+      { itemId: 'thorn-daggers', chance: 0.01, min: 1, max: 1 },
     ],
     currency: { chance: 0.7, min: 3, max: 8 },
   },
@@ -464,6 +502,13 @@ export const DROP_TABLES: Record<string, DropTable> = {
       { itemId: 'pond-gel', chance: 0.5, min: 1, max: 2 },
       { itemId: 'fern-frond', chance: 0.3, min: 1, max: 1 },
       { itemId: 'dew-tonic', chance: 0.08, min: 1, max: 1 },
+      { itemId: 'fernweave-tunic', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'fernweave-leggings', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'fernweave-boots', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'dew-cape', chance: 0.015, min: 1, max: 1 },
+      { itemId: 'frond-pendant', chance: 0.01, min: 1, max: 1 },
+      { itemId: 'twine-belt', chance: 0.01, min: 1, max: 1 },
+      { itemId: 'cinder-ring', chance: 0.005, min: 1, max: 1 },
     ],
     currency: { chance: 0.75, min: 6, max: 14 },
   },
@@ -471,6 +516,8 @@ export const DROP_TABLES: Record<string, DropTable> = {
     items: [
       { itemId: 'crystal-shard', chance: 0.55, min: 1, max: 3 },
       { itemId: 'ember-tonic', chance: 0.15, min: 1, max: 2 },
+      { itemId: 'bark-pauldrons', chance: 0.02, min: 1, max: 1 },
+      { itemId: 'crystal-band', chance: 0.005, min: 1, max: 1 },
     ],
     currency: { chance: 0.85, min: 40, max: 90 },
   },

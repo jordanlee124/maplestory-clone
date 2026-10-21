@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { COMBAT, DROP_TABLES, LEVELING, LOOT, MAPS, type MapDef } from '@cindervale/content';
+import {
+  COMBAT,
+  DROP_TABLES,
+  ITEM_USE_COOLDOWN_MS,
+  LEVELING,
+  LOOT,
+  MAPS,
+  type MapDef,
+} from '@cindervale/content';
 import { and, characters, eq, type Character, type Db } from '@cindervale/database';
 import {
   expToNext,
@@ -14,18 +22,27 @@ import {
 import {
   AttackRequest,
   ClientMessage,
+  EquipRequest,
+  ForgeRequest,
+  ImprintRequest,
   InputMessage,
   JoinOptions,
   LearnSkillRequest,
   PickupRequest,
   RespawnRequest,
   ServerMessage,
+  UnequipRequest,
+  UseItemRequest,
   type AttackRejected,
   type AttackResult,
   type CharacterStats,
   type DropView,
+  type EnhanceResult,
   type ExpGained,
+  type ItemAction,
   type ItemPickedUp,
+  type ItemRejected,
+  type ItemRejectReason,
   type LevelUp,
   type LootSpawned,
   type MonsterKilled,
@@ -38,7 +55,17 @@ import { verifyToken } from '@cindervale/protocol/token';
 import { Room, ServerError, type AuthContext, type Client } from '@colyseus/core';
 import { monsterHitsPlayer, resolveAttack, validatePickup, type Drop } from './combat';
 import { resetMonsterLife, spawnMonsters, topDamager, type Monster } from './monsters';
+import {
+  equipItem,
+  forgeItem,
+  imprintItem,
+  loadEquipped,
+  unequipItem,
+  useItem,
+  type EnhanceOutcome,
+} from './items';
 import { grantExp, grantLoot, loadInventory } from './rewards';
+import type { EquipInstance } from './equipment';
 import {
   checkLearn,
   classSkills,
@@ -65,7 +92,9 @@ const MAX_QUEUED_INPUTS = 30;
 /** Step credits a player can bank to absorb network jitter. */
 const MAX_STEP_CREDITS = 10;
 
-type MapClient = Client<{ auth: Character & { skills: Map<string, number> } }>;
+type MapClient = Client<{
+  auth: Character & { skills: Map<string, number>; equipment: EquipInstance[] };
+}>;
 
 /**
  * Builds the authoritative map room. A factory so deps are injected without globals.
@@ -137,6 +166,25 @@ export function createMapRoom({
       this.onMessage(ClientMessage.LearnSkill, LearnSkillRequest, (client, req) => {
         void this.handleLearnSkill(client, req);
       });
+      this.onMessage(ClientMessage.Equip, EquipRequest, (client, req) => {
+        void this.itemOp(client, 'equip', (s) => equipItem(db, s.characterId, req.instanceId));
+      });
+      this.onMessage(ClientMessage.Unequip, UnequipRequest, (client, req) => {
+        void this.itemOp(client, 'unequip', (s) => unequipItem(db, s.characterId, req.slot));
+      });
+      this.onMessage(ClientMessage.Forge, ForgeRequest, (client, req) => {
+        void this.itemOp(client, 'forge', (s) =>
+          forgeItem(db, s.characterId, req.instanceId, req.fromLevel, rng),
+        );
+      });
+      this.onMessage(ClientMessage.Imprint, ImprintRequest, (client, req) => {
+        void this.itemOp(client, 'imprint', (s) =>
+          imprintItem(db, s.characterId, req.instanceId, req.fromRolls, rng),
+        );
+      });
+      this.onMessage(ClientMessage.UseItem, UseItemRequest, (client, req) => {
+        void this.handleUseItem(client, req.itemId);
+      });
 
       this.setTimestep((deltaMs) => this.tick(deltaMs), 1000 / TICK_RATE);
     }
@@ -162,7 +210,11 @@ export function createMapRoom({
         throw new ServerError(400, 'Character is on another map');
       if (activeCharacters.has(character.id))
         throw new ServerError(409, 'Character is already in game');
-      return { ...character, skills: await loadSkills(db, character.id) };
+      return {
+        ...character,
+        skills: await loadSkills(db, character.id),
+        equipment: await loadEquipped(db, character.id),
+      };
     }
 
     override onJoin(client: MapClient) {
@@ -319,6 +371,82 @@ export function createMapRoom({
       // Not granted: put the drop back for this player (or someone else) to take later.
       if (now() < drop.expiresAt) this.addDrop(drop);
       reject(result);
+    }
+
+    /**
+     * Runs one item transaction for the client (one at a time per player), then refreshes
+     * whatever it changed: worn equipment and stats, the enhance result, the inventory.
+     */
+    private async itemOp(
+      client: MapClient,
+      action: ItemAction,
+      run: (
+        s: Session,
+      ) => Promise<{ ok: true } | EnhanceOutcome | { ok: false; reason: ItemRejectReason }>,
+    ) {
+      const s = this.sessions.get(client.sessionId);
+      if (!s) return;
+      const reject = (reason: ItemRejectReason) =>
+        client.send(ServerMessage.ItemRejected, { action, reason } satisfies ItemRejected);
+      if (s.itemPending) return reject('busy');
+      s.itemPending = true;
+      try {
+        const result = await run(s);
+        if (!result.ok) return reject(result.reason);
+        if ('row' in result) {
+          client.send(ServerMessage.EnhanceResult, {
+            kind: action === 'forge' ? 'forge' : 'imprint',
+            instanceId: result.row.id,
+            success: result.success,
+            cost: result.cost,
+            forgeLevel: result.row.forgeLevel,
+            imprintTier: result.row.imprintTier,
+            imprints: result.row.imprints as EnhanceResult['imprints'],
+          } satisfies EnhanceResult);
+        }
+        if (!('row' in result) || result.worn) {
+          s.equipment = await loadEquipped(db, s.characterId);
+          refreshStats(s);
+          this.sendStats(s);
+        }
+        await this.sendInventory(client, s.characterId);
+      } catch (err) {
+        console.error(`Item ${action} for ${s.characterId} failed`, err);
+        reject('error');
+      } finally {
+        s.itemPending = false;
+      }
+    }
+
+    private async handleUseItem(client: MapClient, itemId: string) {
+      const s = this.sessions.get(client.sessionId);
+      if (!s) return;
+      const reject = (reason: ItemRejectReason) =>
+        client.send(ServerMessage.ItemRejected, {
+          action: 'useItem',
+          reason,
+        } satisfies ItemRejected);
+      const t = now();
+      if (s.dead) return reject('invalid_state');
+      if (t < s.nextItemUseAt) return reject('cooldown');
+      if (s.itemPending) return reject('busy');
+      s.nextItemUseAt = t + ITEM_USE_COOLDOWN_MS;
+      s.itemPending = true;
+      try {
+        const result = await useItem(db, s.characterId, itemId);
+        if (!result.ok) return reject(result.reason);
+        // A player who died while the transaction ran stays dead; the item is still spent.
+        if (!s.dead) {
+          s.hp = Math.min(s.stats.maxHp, s.hp + (result.restore.hp ?? 0));
+          s.mp = Math.min(s.stats.maxMp, s.mp + (result.restore.mp ?? 0));
+        }
+        await this.sendInventory(client, s.characterId);
+      } catch (err) {
+        console.error(`Using ${itemId} for ${s.characterId} failed`, err);
+        reject('error');
+      } finally {
+        s.itemPending = false;
+      }
     }
 
     private handleRespawn(client: MapClient) {

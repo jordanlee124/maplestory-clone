@@ -70,14 +70,15 @@ const bonusAt = (
   return out;
 };
 
-/** Class + level stats with learned passives and active buffs applied. */
+/** Class + level stats with equipment, learned passives and active buffs applied. */
 export function computeStats(
   classId: string,
   level: number,
   learned: SkillLevels,
   buffs: Buffs,
+  equipment: readonly StatBonus[] = [],
 ): Stats {
-  const bonuses: StatBonus[] = [];
+  const bonuses: StatBonus[] = [...equipment];
   for (const [id, lvl] of learned) {
     const skill = skillDef(id);
     if (skill?.kind === 'passive' && lvl > 0) bonuses.push(bonusAt(skill, lvl));

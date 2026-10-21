@@ -1,5 +1,5 @@
 // End-to-end combat through a real Colyseus server and SDK clients (Phase 1B completion).
-import { LEVELING, MAPS } from '@cindervale/content';
+import { DROP_TABLES, LEVELING, LOOT, MAPS } from '@cindervale/content';
 import {
   accounts,
   characters,
@@ -19,9 +19,11 @@ import {
   type AttackResult,
   type CharacterStats,
   type DropView,
+  type EnhanceResult,
   type ExpGained,
   type Inventory,
   type ItemPickedUp,
+  type ItemRejected,
   type LevelUp,
   type MonsterView,
   type PickupRejected,
@@ -137,6 +139,24 @@ const drops = (room: Room) => [...((room.state?.drops as Map<string, DropView>)?
 const attack = (room: Room, requestId: number, skillId = 'basic-attack', facing = 'right') =>
   room.send(ClientMessage.Attack, { requestId, skillId, facing });
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const me = (room: Room) => (room.state?.players as Map<string, { x: number }>)?.get(room.sessionId);
+
+/** Walks with real-time inputs (server-validated movement) until within `range` of x. */
+async function walkTo(room: Room, x: number, range = LOOT.pickupRange.x - 10) {
+  for (let seq = 0; Math.abs(me(room)!.x - x) > range; seq++) {
+    const right = me(room)!.x < x;
+    room.send(ClientMessage.Input, {
+      seq,
+      left: !right,
+      right,
+      up: false,
+      down: false,
+      jump: false,
+    });
+    await delay(1000 / 60);
+    if (seq > 600) throw new Error('walk timed out');
+  }
+}
 
 describe('combat in a map room', () => {
   it('two players damage a monster, kill it, and both earn persisted EXP', async () => {
@@ -203,10 +223,16 @@ describe('combat in a map room', () => {
     const b = await join({ dx: 15 });
     await waitFor(() => monster(a.room, TWIG.id)?.hp === 40, 10_000);
     attack(a.room, 1);
-    await waitFor(() => drops(a.room).length === 4, 10_000); // rng 0.01: every entry drops
+    const table = DROP_TABLES['twig-creature']!;
+    const count = table.items.filter((e) => 0.01 < e.chance).length + 1;
+    await waitFor(() => drops(a.room).length === count, 10_000); // rng 0.01: every entry drops
     expect(drops(a.room).every((d) => d.ownerId === a.characterId)).toBe(true);
 
-    const near = drops(a.room).find((d) => d.itemId === 'twig-bundle')!;
+    const x = me(a.room)!.x;
+    const near = drops(a.room)
+      .filter((d) => d.itemId !== '')
+      .sort((d, e) => Math.abs(d.x - x) - Math.abs(e.x - x))[0]!;
+    expect(Math.abs(near.x - x)).toBeLessThanOrEqual(LOOT.pickupRange.x);
     b.room.send(ClientMessage.Pickup, { dropId: near.dropId });
     await waitFor(() => b.got(ServerMessage.PickupRejected).length === 1);
     expect(b.got<PickupRejected>(ServerMessage.PickupRejected)[0]).toEqual({
@@ -222,24 +248,25 @@ describe('combat in a map room', () => {
     // The second arrives while the first is still being persisted.
     expect(a.got<PickupRejected>(ServerMessage.PickupRejected)[0]!.reason).toBe('invalid_state');
     expect(b.got<ItemPickedUp>(ServerMessage.ItemPickedUp)[0]).toMatchObject({
-      itemId: 'twig-bundle',
+      itemId: near.itemId,
       quantity: 1,
     });
 
     const currency = drops(a.room).find((d) => d.itemId === '')!;
+    await walkTo(a.room, currency.x);
     a.room.send(ClientMessage.Pickup, { dropId: currency.dropId });
     await waitFor(() => a.got<Inventory>(ServerMessage.Inventory).some((i) => i.currency === 3));
     const inv = await conn.db
       .select()
       .from(inventoryItems)
       .where(eq(inventoryItems.characterId, a.characterId));
-    expect(inv).toMatchObject([{ itemId: 'twig-bundle', quantity: 1 }]);
+    expect(inv).toMatchObject([{ itemId: near.itemId, quantity: 1 }]);
     const ledger = await conn.db
       .select()
       .from(grantedRewards)
       .where(eq(grantedRewards.key, `drop:${near.dropId}`));
     expect(ledger).toHaveLength(1);
-  });
+  }, 20_000);
 
   it('rejects invalid and malicious combat commands', async () => {
     const a = await join({ classId: 'runewaver', dx: -15 });
@@ -365,5 +392,62 @@ describe('combat in a map room', () => {
     expect(snapshot.skills).toContainEqual({ skillId: 'mana-weave', level: 1 });
     expect(snapshot.skillPoints).toBe(10);
     expect(snapshot.buffs).toEqual([]); // buffs end with the session
+  });
+
+  it('equips through the room, recomputing stats, and uses a potion server-side', async () => {
+    const a = await join({ classId: 'ember-knight', level: 5, dx: -400 });
+    const [blade] = await conn.db
+      .insert(inventoryItems)
+      .values([
+        { characterId: a.characterId, slot: 0, itemId: 'ember-brand', quantity: 1 },
+        { characterId: a.characterId, slot: 1, itemId: 'ember-tonic', quantity: 2 },
+      ])
+      .returning();
+    // Rejoin so the seeded vitals and items load.
+    await a.room.leave();
+    open.splice(open.indexOf(a.room), 1);
+    await delay(200);
+    await conn.db
+      .update(characters)
+      .set({ currency: 500, hp: 10 })
+      .where(eq(characters.id, a.characterId));
+    const room = await connect(a.token, a.characterId);
+    open.push(room);
+    const inbox: Record<string, unknown[]> = {};
+    room.onMessage('*', (type, payload) => (inbox[String(type)] ??= []).push(payload));
+    const got = <T>(type: string) => (inbox[type] ?? []) as T[];
+    const stats = () => got<CharacterStats>(ServerMessage.CharacterStats);
+    await waitFor(() => stats().length === 1);
+    const before = stats()[0]!.stats.attack;
+
+    room.send(ClientMessage.Equip, { instanceId: blade!.id });
+    await waitFor(() => stats().length === 2);
+    expect(stats()[1]!.stats.attack).toBe(before + 10);
+    await waitFor(() =>
+      got<Inventory>(ServerMessage.Inventory).some((i) => i.equipped.length === 1),
+    );
+
+    room.send(ClientMessage.Forge, { instanceId: blade!.id, fromLevel: 0 });
+    await waitFor(() => got<EnhanceResult>(ServerMessage.EnhanceResult).length === 1);
+    expect(got<EnhanceResult>(ServerMessage.EnhanceResult)[0]).toMatchObject({
+      kind: 'forge',
+      success: true, // rng 0.01
+      forgeLevel: 1,
+    });
+    await waitFor(() => stats().length === 3);
+    expect(stats()[2]!.stats.attack).toBe(before + 12);
+
+    const hp = () => (room.state.players as Map<string, { hp: number }>).get(room.sessionId)!.hp;
+    const hpBefore = hp();
+    room.send(ClientMessage.UseItem, { itemId: 'ember-tonic' });
+    room.send(ClientMessage.UseItem, { itemId: 'ember-tonic' }); // inside the use cooldown
+    await waitFor(() => got<ItemRejected>(ServerMessage.ItemRejected).length === 1);
+    expect(got<ItemRejected>(ServerMessage.ItemRejected)[0]!.reason).toMatch(/cooldown|busy/);
+    await waitFor(() => hp() >= hpBefore + 50);
+    const left = await conn.db
+      .select()
+      .from(inventoryItems)
+      .where(eq(inventoryItems.itemId, 'ember-tonic'));
+    expect(left.filter((r) => r.characterId === a.characterId)[0]!.quantity).toBe(1);
   });
 });

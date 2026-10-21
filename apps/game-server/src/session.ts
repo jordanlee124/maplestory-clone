@@ -1,5 +1,6 @@
 import type { Body, Stats } from '@cindervale/game-core';
 import type { InputMessage } from '@cindervale/protocol';
+import { equipmentBonuses, type EquipInstance } from './equipment';
 import { computeStats } from './progression';
 
 /** Everything the server knows about one connected player. Never trusted from the client. */
@@ -21,10 +22,15 @@ export interface Session {
   /** Learned skill levels, mirrored from the database. */
   skills: Map<string, number>;
   buffs: Map<string, { level: number; until: number }>;
+  /** Worn equipment, mirrored from the database. */
+  equipment: EquipInstance[];
   /** Class, level, passives and buffs combined; recompute with refreshStats. */
   stats: Stats;
   /** One skill-learn transaction at a time per player. */
   learnPending: boolean;
+  /** One item transaction (equip, forge, imprint, use) at a time per player. */
+  itemPending: boolean;
+  nextItemUseAt: number;
   // Combat
   hp: number;
   mp: number;
@@ -39,7 +45,7 @@ export interface Session {
 
 /** Recomputes stats after a level, skill or buff change; vitals are capped, not healed. */
 export function refreshStats(s: Session) {
-  s.stats = computeStats(s.classId, s.level, s.skills, s.buffs);
+  s.stats = computeStats(s.classId, s.level, s.skills, s.buffs, equipmentBonuses(s.equipment));
   s.hp = Math.min(s.hp, s.stats.maxHp);
   s.mp = Math.min(s.mp, s.stats.maxMp);
 }
@@ -56,11 +62,13 @@ export function createSession(
     hp?: number | null;
     mp?: number | null;
     skills?: ReadonlyMap<string, number>;
+    equipment?: readonly EquipInstance[];
   },
   now = 0,
 ): Session {
   const skills = new Map(c.skills);
-  const stats = computeStats(c.classId, c.level, skills, new Map());
+  const equipment = [...(c.equipment ?? [])];
+  const stats = computeStats(c.classId, c.level, skills, new Map(), equipmentBonuses(equipment));
   // Vitals carry over from the last session (null = never saved = full), so leaving and
   // rejoining can't heal; a character that left dead comes back dead.
   const hp = Math.min(c.hp ?? stats.maxHp, stats.maxHp);
@@ -79,8 +87,11 @@ export function createSession(
     exp: c.exp,
     skills,
     buffs: new Map(),
+    equipment,
     stats,
     learnPending: false,
+    itemPending: false,
+    nextItemUseAt: 0,
     hp,
     mp,
     dead: hp <= 0,

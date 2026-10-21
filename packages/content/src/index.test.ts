@@ -6,6 +6,11 @@ import {
   CLASS_SCALING,
   CLASSES,
   DROP_TABLES,
+  EQUIP_SLOTS,
+  EQUIPMENT,
+  FORGE,
+  IMPRINTS,
+  SETS,
   ITEMS,
   MAPS,
   MONSTERS,
@@ -98,6 +103,33 @@ describe('skills', () => {
         expect(pre?.classId).toBe(s.classId);
         expect(s.requires.level).toBeLessThanOrEqual(pre!.maxLevel);
       }
+    }
+  });
+});
+
+describe('equipment', () => {
+  it('every equip item has equipment data and vice versa', () => {
+    for (const item of Object.values(ITEMS)) {
+      expect(item.kind === 'equip').toBe(item.id in EQUIPMENT);
+    }
+    for (const [id, e] of Object.entries(EQUIPMENT)) {
+      expect(e.itemId).toBe(id);
+      expect(EQUIP_SLOTS).toContain(e.slot);
+      if (e.setId) expect(SETS[e.setId]).toBeDefined();
+      for (const c of e.classes ?? []) expect(CLASS_IDS).toContain(c);
+    }
+  });
+
+  it('every slot has at least one item', () => {
+    const slots = new Set(Object.values(EQUIPMENT).map((e) => e.slot));
+    for (const slot of EQUIP_SLOTS) expect(slots.has(slot)).toBe(true);
+  });
+
+  it('has sane enhancement tables', () => {
+    for (const l of FORGE.levels) expect(l.successRate).toBeGreaterThan(0);
+    for (const t of IMPRINTS.tiers) {
+      expect(t.lines).toBeGreaterThan(0);
+      expect(t.pool.length).toBeGreaterThanOrEqual(t.lines);
     }
   });
 });

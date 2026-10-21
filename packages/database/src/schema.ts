@@ -1,9 +1,11 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  check,
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -47,7 +49,17 @@ export const characters = pgTable(
   ],
 );
 
-/** One row per occupied inventory slot. */
+/** One rolled stat line (equipment bonus stats and imprints). */
+export interface StatLineRow {
+  stat: string;
+  value: number;
+}
+
+/**
+ * One row per item stack. An equipment row (quantity 1) is one equipment instance: its id is
+ * the instance id, and it carries its own rolls and enhancement state. A row is either in a
+ * bag `slot` or worn in `equipSlot`, never both.
+ */
 export const inventoryItems = pgTable(
   'inventory_items',
   {
@@ -55,11 +67,45 @@ export const inventoryItems = pgTable(
     characterId: uuid()
       .notNull()
       .references(() => characters.id, { onDelete: 'cascade' }),
-    slot: integer().notNull(),
+    slot: integer(),
+    equipSlot: text(),
     itemId: text().notNull(),
     quantity: integer().notNull(),
+    /** Bonus stat lines rolled once at creation. */
+    bonus: jsonb().$type<StatLineRow[]>().notNull().default([]),
+    /** Forge Ascension level. */
+    forgeLevel: integer().notNull().default(0),
+    /** Arcane Imprint tier (0 = none), its lines, and the reroll count (request idempotency). */
+    imprintTier: integer().notNull().default(0),
+    imprints: jsonb().$type<StatLineRow[]>().notNull().default([]),
+    imprintRolls: integer().notNull().default(0),
   },
-  (t) => [uniqueIndex('inventory_items_slot_idx').on(t.characterId, t.slot)],
+  (t) => [
+    uniqueIndex('inventory_items_slot_idx').on(t.characterId, t.slot),
+    uniqueIndex('inventory_items_equip_slot_idx').on(t.characterId, t.equipSlot),
+    check('inventory_items_one_place', sql`(${t.slot} is null) <> (${t.equipSlot} is null)`),
+  ],
+);
+
+/**
+ * Audit log of item and currency changes made by player operations (equip, forge, imprint,
+ * use), written in the same transaction as the change.
+ */
+export const itemTransactions = pgTable(
+  'item_transactions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    characterId: uuid()
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    kind: text().notNull(),
+    inventoryItemId: uuid().references(() => inventoryItems.id, { onDelete: 'set null' }),
+    currencyDelta: bigint({ mode: 'number' }).notNull().default(0),
+    /** Operation details, including the content table version used for random outcomes. */
+    detail: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('item_transactions_character_idx').on(t.characterId, t.createdAt)],
 );
 
 /** Learned skill levels. Innate skills have no row until raised past level 1. */

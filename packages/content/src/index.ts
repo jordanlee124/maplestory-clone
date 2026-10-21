@@ -2,6 +2,7 @@
 import type { MapGeometry, MonsterBehavior } from '@cindervale/game-core';
 
 export * from './balance';
+export * from './equipment';
 export type { StatBonus, Stats } from '@cindervale/game-core';
 
 export interface RegionDef {
@@ -20,6 +21,8 @@ export interface MapDef {
   theme: { sky: number; hillsFar: number; hillsNear: number };
   /** Each spawn's y must be a platform top; the monster stays on that platform. */
   monsterSpawns: readonly { monsterId: string; x: number; y: number }[];
+  /** Boss arenas: automation (auto-grind) is never allowed. */
+  bossInstance?: boolean;
 }
 
 export interface ClassDef {

@@ -10,8 +10,9 @@ import {
   sql,
   type Db,
 } from '@cindervale/database';
-import { addExp } from '@cindervale/game-core';
-import type { Inventory } from '@cindervale/protocol';
+import { addExp, type Rng } from '@cindervale/game-core';
+import type { Inventory, ItemView } from '@cindervale/protocol';
+import { rollBonusLines } from './equipment';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -68,13 +69,15 @@ export type LootGrantResult = 'ok' | 'duplicate' | 'inventory_full';
 
 /**
  * Adds an item stack (merging into partial stacks first, then free slots) or currency, once
- * per `key`. All-or-nothing: if the whole quantity doesn't fit, nothing changes.
+ * per `key`. All-or-nothing: if the whole quantity doesn't fit, nothing changes. Each new
+ * equipment instance gets its bonus stats rolled here.
  */
 export async function grantLoot(
   db: Db,
   characterId: string,
   key: string,
   loot: LootGrant,
+  rng: Rng = Math.random,
 ): Promise<LootGrantResult> {
   try {
     return await db.transaction(async (tx) => {
@@ -109,9 +112,13 @@ export async function grantLoot(
       for (let slot = 0; remaining > 0 && slot < LOOT.inventoryCapacity; slot++) {
         if (used.has(slot)) continue;
         const add = Math.min(remaining, stackSize);
-        await tx
-          .insert(inventoryItems)
-          .values({ characterId, slot, itemId: loot.itemId, quantity: add });
+        await tx.insert(inventoryItems).values({
+          characterId,
+          slot,
+          itemId: loot.itemId,
+          quantity: add,
+          bonus: rollBonusLines(loot.itemId, rng),
+        });
         remaining -= add;
       }
       if (remaining > 0) throw new InventoryFull();
@@ -128,14 +135,29 @@ export async function loadInventory(db: Db, characterId: string): Promise<Invent
     .select({ currency: characters.currency })
     .from(characters)
     .where(eq(characters.id, characterId));
-  const items = await db
-    .select({
-      slot: inventoryItems.slot,
-      itemId: inventoryItems.itemId,
-      quantity: inventoryItems.quantity,
-    })
+  const rows = await db
+    .select()
     .from(inventoryItems)
     .where(eq(inventoryItems.characterId, characterId))
     .orderBy(asc(inventoryItems.slot));
-  return { currency: c?.currency ?? 0, capacity: LOOT.inventoryCapacity, items };
+  const view = (r: (typeof rows)[number]): ItemView => ({
+    id: r.id,
+    itemId: r.itemId,
+    quantity: r.quantity,
+    bonus: r.bonus as ItemView['bonus'],
+    forgeLevel: r.forgeLevel,
+    imprintTier: r.imprintTier,
+    imprints: r.imprints as ItemView['imprints'],
+    imprintRolls: r.imprintRolls,
+  });
+  return {
+    currency: c?.currency ?? 0,
+    capacity: LOOT.inventoryCapacity,
+    items: rows.flatMap((r) => (r.slot === null ? [] : [{ ...view(r), slot: r.slot }])),
+    equipped: rows.flatMap((r) =>
+      r.equipSlot === null
+        ? []
+        : [{ ...view(r), equipSlot: r.equipSlot as Inventory['equipped'][number]['equipSlot'] }],
+    ),
+  };
 }

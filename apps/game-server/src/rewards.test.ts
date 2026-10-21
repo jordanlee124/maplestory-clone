@@ -39,6 +39,14 @@ async function character(level = 1, exp = 0) {
   return c!.id;
 }
 
+/** Bag contents as { slot, itemId, quantity }. */
+const bag = async (id: string) =>
+  (await loadInventory(conn.db, id)).items.map(({ slot, itemId, quantity }) => ({
+    slot,
+    itemId,
+    quantity,
+  }));
+
 const row = async (id: string) =>
   (await conn.db.select().from(characters).where(eq(characters.id, id)))[0]!;
 
@@ -73,7 +81,7 @@ describe('grantLoot', () => {
     const id = await character();
     expect(await grantLoot(conn.db, id, 'l1', { itemId: 'ember-tonic', quantity: 30 })).toBe('ok');
     expect(await grantLoot(conn.db, id, 'l2', { itemId: 'ember-tonic', quantity: 30 })).toBe('ok');
-    expect((await loadInventory(conn.db, id)).items).toEqual([
+    expect(await bag(id)).toEqual([
       { slot: 0, itemId: 'ember-tonic', quantity: 50 },
       { slot: 1, itemId: 'ember-tonic', quantity: 10 },
     ]);
@@ -93,9 +101,7 @@ describe('grantLoot', () => {
       grantLoot(conn.db, id, 'drop-x', { itemId: 'fern-frond', quantity: 1 }),
     ]);
     expect(grants.sort()).toEqual(['duplicate', 'ok']);
-    expect((await loadInventory(conn.db, id)).items).toEqual([
-      { slot: 0, itemId: 'fern-frond', quantity: 1 },
-    ]);
+    expect(await bag(id)).toEqual([{ slot: 0, itemId: 'fern-frond', quantity: 1 }]);
   });
 
   it('is all-or-nothing when the inventory is full, and the key stays reusable', async () => {
